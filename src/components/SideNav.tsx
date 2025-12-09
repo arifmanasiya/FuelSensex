@@ -17,11 +17,18 @@ const companyLinks = [
 
 export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onLinkClick?: () => void }) {
   const [openAlerts, setOpenAlerts] = useState(0);
+  const [companyOpen, setCompanyOpen] = useState(true);
 
   useEffect(() => {
     get<Alert[]>('/alerts')
       .then((res) => setOpenAlerts(res.filter((a) => a.isOpen).length))
       .catch(() => setOpenAlerts(0));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCompanyOpen(window.innerWidth > 900);
+    }
   }, []);
 
   return (
@@ -43,10 +50,16 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
         ))}
       </nav>
       <div className="sidebar-extra">
-        <div className="muted" style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-          Company
-        </div>
-        <div className="nav-links">
+        <button
+          className="sidebar-section-toggle"
+          type="button"
+          aria-expanded={companyOpen}
+          onClick={() => setCompanyOpen((prev) => !prev)}
+        >
+          <span>Company</span>
+          <span>{companyOpen ? '▾' : '▸'}</span>
+        </button>
+        <div className={`nav-links company-links ${companyOpen ? 'open' : 'closed'}`}>
           {companyLinks.map((link) => (
             <NavLink
               key={link.to}

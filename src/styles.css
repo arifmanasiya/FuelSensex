@@ -419,6 +419,24 @@ a {
   color: #2563eb;
 }
 
+.sidebar-section-toggle {
+  display: none;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-weight: 700;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.company-links.closed {
+  display: none;
+}
+
 .login-page {
   min-height: 100vh;
   display: grid;
@@ -661,6 +679,11 @@ a {
     inset: 0;
     background: rgba(0, 0, 0, 0.35);
     z-index: 150;
+  }
+
+  .sidebar-section-toggle {
+    display: inline-flex;
+    width: 100%;
   }
 
   .cta-drawer {

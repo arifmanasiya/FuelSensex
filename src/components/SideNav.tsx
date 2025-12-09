@@ -36,25 +36,9 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
             className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
             onClick={onLinkClick}
           >
-            <span>{link.icon}</span>
-            <span className="nav-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-              {link.label}
-              {link.to === '/alerts' && openAlerts > 0 ? (
-                <span
-                  style={{
-                    background: '#ef4444',
-                    color: '#fff',
-                    borderRadius: '999px',
-                    padding: '0.05rem 0.45rem',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {openAlerts}
-                </span>
-              ) : null}
-            </span>
+            <span className="nav-icon">{link.icon}</span>
+            <span className="nav-label">{link.label}</span>
+            {link.to === '/alerts' && openAlerts > 0 ? <span className="nav-count">{openAlerts}</span> : null}
           </NavLink>
         ))}
       </nav>
@@ -70,7 +54,7 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
               className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
               onClick={onLinkClick}
             >
-              <span>{link.icon}</span>
+              <span className="nav-icon">{link.icon}</span>
               <span className="nav-label">{link.label}</span>
             </NavLink>
           ))}

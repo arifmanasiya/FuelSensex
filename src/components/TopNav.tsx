@@ -20,16 +20,22 @@ export default function TopNav() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <a
-          className="button ghost"
+          className="button ghost responsive-button"
           href="https://docs.google.com/forms/d/e/1FAIpQLSeOPX0KhXKh5SC-gtiGF1jRyO_3oN_bLUerx5BxiVVlenbHIQ/viewform?usp=header"
           target="_blank"
           rel="noreferrer"
         >
-          Feedback
+          <span className="icon" aria-hidden="true">
+            💬
+          </span>
+          <span className="text">Feedback</span>
         </a>
         <div className="pill">{userName}</div>
-        <button className="button ghost" type="button" onClick={handleLogout}>
-          Logout
+        <button className="button ghost responsive-button" type="button" onClick={handleLogout}>
+          <span className="icon" aria-hidden="true">
+            ⎋
+          </span>
+          <span className="text">Logout</span>
         </button>
       </div>
     </header>

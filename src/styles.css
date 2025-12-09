@@ -443,6 +443,29 @@ a {
   color: #2563eb;
 }
 
+.nav-group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.company-group {
+  margin-top: auto;
+}
+
+.group-toggle {
+  display: none;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-weight: 700;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
 .sidebar-section-toggle {
   display: none;
   width: 100%;
@@ -725,5 +748,17 @@ a {
   .cta-drawer {
     left: 12px;
     right: 12px;
+  }
+
+  .group-toggle {
+    display: inline-flex;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+
+  .mobile-only {
+    display: inline-flex;
   }
 }

@@ -17,6 +17,7 @@ const companyLinks = [
 
 export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onLinkClick?: () => void }) {
   const [openAlerts, setOpenAlerts] = useState(0);
+  const [productOpen, setProductOpen] = useState(true);
   const [companyOpen, setCompanyOpen] = useState(true);
   const navigate = useNavigate();
 
@@ -28,7 +29,9 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setCompanyOpen(window.innerWidth > 900);
+      const isDesktop = window.innerWidth > 900;
+      setProductOpen(isDesktop);
+      setCompanyOpen(isDesktop);
     }
   }, []);
 
@@ -38,45 +41,67 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
     navigate('/login');
   }
 
-  const sidebarClass = 'sidebar' + (isOpen ? ' open' : '');
+  const sidebarClass = `sidebar${isOpen ? ' open' : ''}`;
 
   return (
     <aside className={sidebarClass}>
       <div className="sidebar-header">
         <div className="brand">FuelSense</div>
         <button
-          className="sidebar-section-toggle mobile-only"
+          className="group-toggle mobile-only"
           type="button"
-          aria-expanded={companyOpen}
-          onClick={() => setCompanyOpen((prev) => !prev)}
+          aria-expanded={productOpen}
+          onClick={() => setProductOpen((prev) => !prev)}
         >
-          <span>Company</span>
-          <span>{companyOpen ? '▾' : '▸'}</span>
+          <span>FuelSense Menu</span>
+          <span>{productOpen ? '▾' : '▸'}</span>
         </button>
       </div>
-      <nav className="nav-links">
-        {productLinks.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            end={link.to === '/'}
-            className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
-            onClick={onLinkClick}
-          >
-            <span className="nav-icon">{link.icon}</span>
-            <span className="nav-label">{link.label}</span>
-            {link.to === '/alerts' && openAlerts > 0 ? <span className="nav-count">{openAlerts}</span> : null}
-          </NavLink>
-        ))}
-      </nav>
-      <div className="sidebar-extra">
+
+      <div className="nav-group">
         <button
-          className="sidebar-section-toggle desktop-only"
+          className="group-toggle desktop-only"
+          type="button"
+          aria-expanded={productOpen}
+          onClick={() => setProductOpen((prev) => !prev)}
+        >
+          <span>FuelSense Menu</span>
+          <span>{productOpen ? '▾' : '▸'}</span>
+        </button>
+        <nav className={`nav-links ${productOpen ? 'open' : 'closed'}`}>
+          {productLinks.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              end={link.to === '/'}
+              className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+              onClick={onLinkClick}
+            >
+              <span className="nav-icon">{link.icon}</span>
+              <span className="nav-label">{link.label}</span>
+              {link.to === '/alerts' && openAlerts > 0 ? <span className="nav-count">{openAlerts}</span> : null}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+
+      <div className="nav-group company-group">
+        <button
+          className="group-toggle desktop-only"
           type="button"
           aria-expanded={companyOpen}
           onClick={() => setCompanyOpen((prev) => !prev)}
         >
-          <span>Company</span>
+          <span>Company Menu</span>
+          <span>{companyOpen ? '▾' : '▸'}</span>
+        </button>
+        <button
+          className="group-toggle mobile-only"
+          type="button"
+          aria-expanded={companyOpen}
+          onClick={() => setCompanyOpen((prev) => !prev)}
+        >
+          <span>Company Menu</span>
           <span>{companyOpen ? '▾' : '▸'}</span>
         </button>
         <div className={`nav-links company-links ${companyOpen ? 'open' : 'closed'}`}>

@@ -52,15 +52,26 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
     <aside className={sidebarClass}>
       <div className="sidebar-header">
         <div className="brand">FuelSense</div>
-        <button
-          className="group-toggle mobile-only"
-          type="button"
-          aria-expanded={productOpen}
-          onClick={() => setProductOpen((prev) => !prev)}
-        >
-          <span>FuelSense Menu</span>
-          <span>{productOpen ? '▾' : '▸'}</span>
-        </button>
+        <div className="mobile-toggle-row mobile-only">
+          <button
+            className="group-toggle"
+            type="button"
+            aria-expanded={productOpen}
+            onClick={() => setProductOpen((prev) => !prev)}
+          >
+            <span>FuelSense</span>
+            <span>{productOpen ? '▾' : '▸'}</span>
+          </button>
+          <button
+            className="group-toggle"
+            type="button"
+            aria-expanded={companyOpen}
+            onClick={() => setCompanyOpen((prev) => !prev)}
+          >
+            <span>Company</span>
+            <span>{companyOpen ? '▾' : '▸'}</span>
+          </button>
+        </div>
       </div>
 
       <div className="nav-group">
@@ -93,15 +104,6 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
       <div className="nav-group company-group">
         <button
           className="group-toggle desktop-only"
-          type="button"
-          aria-expanded={companyOpen}
-          onClick={() => setCompanyOpen((prev) => !prev)}
-        >
-          <span>Company Menu</span>
-          <span>{companyOpen ? '▾' : '▸'}</span>
-        </button>
-        <button
-          className="group-toggle mobile-only"
           type="button"
           aria-expanded={companyOpen}
           onClick={() => setCompanyOpen((prev) => !prev)}

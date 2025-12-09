@@ -151,6 +151,11 @@ a {
   display: none;
 }
 
+.mobile-toggle-row {
+  display: none;
+  gap: 0.5rem;
+}
+
 .topnav {
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -752,6 +757,12 @@ a {
 
   .group-toggle {
     display: inline-flex;
+  }
+
+  .mobile-toggle-row {
+    display: inline-flex;
+    width: 100%;
+    justify-content: space-between;
   }
 
   .desktop-only {

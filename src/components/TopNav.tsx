@@ -3,8 +3,6 @@ interface Props {
 }
 
 export default function TopNav({ onMenuToggle }: Props) {
-  const userName = localStorage.getItem('fuelguard-user') || 'Station Owner';
-
   return (
     <header className="topnav">
       <div className="title">
@@ -20,18 +18,6 @@ export default function TopNav({ onMenuToggle }: Props) {
           </span>
           <span className="text">Menu</span>
         </button>
-        <a
-          className="button ghost responsive-button"
-          href="https://docs.google.com/forms/d/e/1FAIpQLSeOPX0KhXKh5SC-gtiGF1jRyO_3oN_bLUerx5BxiVVlenbHIQ/viewform?usp=header"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="icon" aria-hidden="true">
-            💬
-          </span>
-          <span className="text">Feedback</span>
-        </a>
-        <div className="pill">{userName}</div>
       </div>
     </header>
   );

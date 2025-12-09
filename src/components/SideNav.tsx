@@ -13,6 +13,11 @@ const companyLinks = [
   { to: '/about', label: 'About Us', icon: 'ℹ️' },
   { to: '/faq', label: 'FAQ', icon: '❓' },
   { to: '/contact', label: 'Contact Us', icon: '✉️' },
+  {
+    href: 'https://docs.google.com/forms/d/e/1FAIpQLSeOPX0KhXKh5SC-gtiGF1jRyO_3oN_bLUerx5BxiVVlenbHIQ/viewform?usp=header',
+    label: 'Feedback',
+    icon: '💬',
+  },
 ];
 
 export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onLinkClick?: () => void }) {
@@ -105,17 +110,31 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
           <span>{companyOpen ? '▾' : '▸'}</span>
         </button>
         <div className={`nav-links company-links ${companyOpen ? 'open' : 'closed'}`}>
-          {companyLinks.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
-              onClick={onLinkClick}
-            >
-              <span className="nav-icon">{link.icon}</span>
-              <span className="nav-label">{link.label}</span>
-            </NavLink>
-          ))}
+          {companyLinks.map((link) =>
+            'href' in link ? (
+              <a
+                key={link.label}
+                className="nav-link"
+                href={link.href}
+                target="_blank"
+                rel="noreferrer"
+                onClick={onLinkClick}
+              >
+                <span className="nav-icon">{link.icon}</span>
+                <span className="nav-label">{link.label}</span>
+              </a>
+            ) : (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+                onClick={onLinkClick}
+              >
+                <span className="nav-icon">{link.icon}</span>
+                <span className="nav-label">{link.label}</span>
+              </NavLink>
+            )
+          )}
           <button className="nav-link nav-action" type="button" onClick={handleLogout}>
             <span className="nav-icon">⎋</span>
             <span className="nav-label">Logout</span>

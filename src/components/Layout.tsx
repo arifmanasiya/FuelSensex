@@ -26,7 +26,7 @@ export default function Layout({ children }: Props) {
     <div className="layout">
       <SideNav isOpen={mobileNavOpen} onLinkClick={() => setMobileNavOpen(false)} />
       <div className="main-shell">
-        <TopNav onMenuToggle={() => setMobileNavOpen((prev) => !prev)} />
+        <TopNav />
         <main className="content">
           <FeedbackBanner />
           {children}

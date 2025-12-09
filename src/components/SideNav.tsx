@@ -22,8 +22,8 @@ const companyLinks = [
 
 export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onLinkClick?: () => void }) {
   const [openAlerts, setOpenAlerts] = useState(0);
-  const [productOpen, setProductOpen] = useState(true);
-  const [companyOpen, setCompanyOpen] = useState(true);
+  const [productOpen, setProductOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 900 : true));
+  const [companyOpen, setCompanyOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 900 : true));
   const navigate = useNavigate();
 
   useEffect(() => {

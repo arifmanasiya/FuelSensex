@@ -36,7 +36,7 @@ export default function SideNav() {
             className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
           >
             <span>{link.icon}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span className="nav-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
               {link.label}
               {link.to === '/alerts' && openAlerts > 0 ? (
                 <span
@@ -65,7 +65,7 @@ export default function SideNav() {
           {companyLinks.map((link) => (
             <NavLink key={link.to} to={link.to} className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
               <span>{link.icon}</span>
-              <span>{link.label}</span>
+              <span className="nav-label">{link.label}</span>
             </NavLink>
           ))}
         </div>

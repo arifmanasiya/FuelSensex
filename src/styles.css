@@ -103,6 +103,12 @@ a {
   color: #ffffff;
 }
 
+.nav-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .topnav {
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -597,6 +603,10 @@ a {
   .kpi-grid,
   .tanks-grid {
     grid-template-columns: 1fr;
+  }
+
+  .nav-label {
+    display: none;
   }
 
   .table {

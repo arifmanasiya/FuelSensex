@@ -1,6 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 
-export default function TopNav() {
+interface Props {
+  onMenuToggle?: () => void;
+}
+
+export default function TopNav({ onMenuToggle }: Props) {
   const userName = localStorage.getItem('fuelguard-user') || 'Station Owner';
   const navigate = useNavigate();
 
@@ -19,6 +23,12 @@ export default function TopNav() {
         FuelSense Demo
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <button className="button ghost responsive-button mobile-menu-button" type="button" onClick={onMenuToggle}>
+          <span className="icon" aria-hidden="true">
+            ☰
+          </span>
+          <span className="text">Menu</span>
+        </button>
         <a
           className="button ghost responsive-button"
           href="https://docs.google.com/forms/d/e/1FAIpQLSeOPX0KhXKh5SC-gtiGF1jRyO_3oN_bLUerx5BxiVVlenbHIQ/viewform?usp=header"

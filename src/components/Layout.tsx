@@ -5,6 +5,7 @@ import TopNav from './TopNav';
 import SideNav from './SideNav';
 import SalesCTA from './SalesCTA';
 import FeedbackBanner from './FeedbackBanner';
+import { useState } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -12,6 +13,7 @@ interface Props {
 
 export default function Layout({ children }: Props) {
   const navigate = useNavigate();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('fuelguard-token');
@@ -22,9 +24,9 @@ export default function Layout({ children }: Props) {
 
   return (
     <div className="layout">
-      <SideNav />
+      <SideNav isOpen={mobileNavOpen} onLinkClick={() => setMobileNavOpen(false)} />
       <div className="main-shell">
-        <TopNav />
+        <TopNav onMenuToggle={() => setMobileNavOpen((prev) => !prev)} />
         <main className="content">
           <FeedbackBanner />
           {children}
@@ -37,6 +39,7 @@ export default function Layout({ children }: Props) {
         </footer>
       </div>
       <SalesCTA />
+      {mobileNavOpen ? <div className="backdrop" onClick={() => setMobileNavOpen(false)} /> : null}
     </div>
   );
 }

@@ -15,7 +15,7 @@ const companyLinks = [
   { to: '/contact', label: 'Contact Us', icon: '✉️' },
 ];
 
-export default function SideNav() {
+export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onLinkClick?: () => void }) {
   const [openAlerts, setOpenAlerts] = useState(0);
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function SideNav() {
   }, []);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="brand">FuelSense</div>
       <nav className="nav-links">
         {productLinks.map((link) => (
@@ -34,6 +34,7 @@ export default function SideNav() {
             to={link.to}
             end={link.to === '/'}
             className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+            onClick={onLinkClick}
           >
             <span>{link.icon}</span>
             <span className="nav-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -63,7 +64,12 @@ export default function SideNav() {
         </div>
         <div className="nav-links">
           {companyLinks.map((link) => (
-            <NavLink key={link.to} to={link.to} className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+              onClick={onLinkClick}
+            >
               <span>{link.icon}</span>
               <span className="nav-label">{link.label}</span>
             </NavLink>

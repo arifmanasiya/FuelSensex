@@ -70,6 +70,13 @@ a {
   transition: transform 0.2s ease;
 }
 
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .main-shell {
   display: flex;
   flex-direction: column;
@@ -134,6 +141,14 @@ a {
 
 .nav-action {
   padding: 0.75rem 0.9rem;
+}
+
+.desktop-only {
+  display: inline-flex;
+}
+
+.mobile-only {
+  display: none;
 }
 
 .topnav {
@@ -697,6 +712,14 @@ a {
   .sidebar-section-toggle {
     display: inline-flex;
     width: 100%;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+
+  .mobile-only {
+    display: inline-flex;
   }
 
   .cta-drawer {

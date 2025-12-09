@@ -42,7 +42,18 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
 
   return (
     <aside className={sidebarClass}>
-      <div className="brand">FuelSense</div>
+      <div className="sidebar-header">
+        <div className="brand">FuelSense</div>
+        <button
+          className="sidebar-section-toggle mobile-only"
+          type="button"
+          aria-expanded={companyOpen}
+          onClick={() => setCompanyOpen((prev) => !prev)}
+        >
+          <span>Company</span>
+          <span>{companyOpen ? '▾' : '▸'}</span>
+        </button>
+      </div>
       <nav className="nav-links">
         {productLinks.map((link) => (
           <NavLink
@@ -60,7 +71,7 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
       </nav>
       <div className="sidebar-extra">
         <button
-          className="sidebar-section-toggle"
+          className="sidebar-section-toggle desktop-only"
           type="button"
           aria-expanded={companyOpen}
           onClick={() => setCompanyOpen((prev) => !prev)}

@@ -642,13 +642,18 @@ a {
   }
 
   .sidebar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    height: auto;
-    position: static;
-    width: auto;
-    overflow: visible;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    overflow-y: auto;
+    transform: translateX(-110%);
+    z-index: 200;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
   }
 
   .main-shell {
@@ -666,15 +671,6 @@ a {
     position: static;
     left: 0;
     right: 0;
-  }
-
-  .nav-links {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .hero-grid {
-    grid-template-columns: 1fr;
   }
 
   .content {
@@ -713,13 +709,6 @@ a {
     display: block;
     overflow-x: auto;
     white-space: nowrap;
-  }
-
-  .sidebar {
-    transform: translateX(-110%);
-    width: 220px;
-    z-index: 200;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
   }
 
   .sidebar.open {

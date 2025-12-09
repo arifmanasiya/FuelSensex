@@ -56,88 +56,72 @@ export default function AlertsPage() {
           </button>
         </div>
         <table className="table">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Site</th>
-              <th>Type</th>
-              <th>Message</th>
-              <th>Severity</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {alerts
-              .filter((a) => (alertTab === 'OPEN' ? a.isOpen : !a.isOpen))
-              .map((a) => (
-              <tr key={a.id}>
-                <td>{new Date(a.timestamp).toLocaleString()}</td>
-                <td>{siteName(a.siteId)}</td>
-                <td>{formatType(a.type)}</td>
-                <td>{a.message}</td>
-                <td>
-                  <AlertBadge severity={a.severity} />
-                </td>
-                <td>{a.isOpen ? 'Open' : 'Closed'}</td>
-                <td>
-                  {a.isOpen ? (
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <button
-                      className="button ghost"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-                      onClick={() => setViewAlert(a)}
-                    >
+          <tbody />
+        </table>
+        <div className="alerts-grid">
+          {alerts
+            .filter((a) => (alertTab === 'OPEN' ? a.isOpen : !a.isOpen))
+            .map((a) => (
+              <div key={a.id} className="alert-card">
+                <div className="alert-meta">
+                  <div style={{ fontWeight: 700 }}>{siteName(a.siteId)}</div>
+                  <div className="muted" style={{ fontSize: '0.9rem' }}>
+                    {new Date(a.timestamp).toLocaleString()}
+                  </div>
+                </div>
+                <div className="alert-meta">
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <AlertBadge severity={a.severity} />
+                    <span style={{ fontWeight: 600 }}>{formatType(a.type)}</span>
+                  </div>
+                  <div className="muted">{a.isOpen ? 'Open' : 'Closed'}</div>
+                </div>
+                <div className="muted">{a.message}</div>
+                {a.isOpen ? (
+                  <div className="alert-actions">
+                    <button className="button ghost" onClick={() => setViewAlert(a)}>
                       View
                     </button>
-                      {(a.type === 'RUNOUT_RISK' || a.type === 'SHORT_DELIVERY') && (
-                        <button
-                          className="button"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-                          onClick={() => navigate(`/sites/${a.siteId}#ordering`)}
-                        >
-                          Re-order
-                        </button>
-                      )}
-                      {a.type === 'WATER_DETECTED' && (
-                        <button
-                          className="button ghost"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-                          onClick={() =>
-                            setAlerts((prev) => [
-                              {
-                                id: `svc-${a.id}`,
-                                siteId: a.siteId,
-                                timestamp: new Date().toISOString(),
-                                severity: 'WARNING',
-                                type: 'WATER_DETECTED',
-                                message: 'Service ticket opened (mock) for tank issue',
-                                isOpen: true,
-                              },
-                              ...prev,
-                            ])
-                          }
-                        >
-                          Service
-                        </button>
-                      )}
+                    {(a.type === 'RUNOUT_RISK' || a.type === 'SHORT_DELIVERY') && (
+                      <button className="button" onClick={() => navigate(`/sites/${a.siteId}#ordering`)}>
+                        Re-order
+                      </button>
+                    )}
+                    {a.type === 'WATER_DETECTED' && (
                       <button
                         className="button ghost"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-                        onClick={() => {
-                          setCloseAlert(a);
-                          setCloseNote('');
-                        }}
+                        onClick={() =>
+                          setAlerts((prev) => [
+                            {
+                              id: `svc-${a.id}`,
+                              siteId: a.siteId,
+                              timestamp: new Date().toISOString(),
+                              severity: 'WARNING',
+                              type: 'WATER_DETECTED',
+                              message: 'Service ticket opened (mock) for tank issue',
+                              isOpen: true,
+                            },
+                            ...prev,
+                          ])
+                        }
                       >
-                        Close
+                        Service
                       </button>
-                    </div>
-                  ) : null}
-                </td>
-              </tr>
+                    )}
+                    <button
+                      className="button ghost"
+                      onClick={() => {
+                        setCloseAlert(a);
+                        setCloseNote('');
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             ))}
-          </tbody>
-        </table>
+        </div>
         {alerts.length === 0 ? <div className="muted">No alerts.</div> : null}
       </div>
       {viewAlert ? (

@@ -1,0 +1,72 @@
+                    onChange={(e) => setNewService((prev) => ({ ...prev, contactName: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Phone"
+                    value={newService.phone}
+                    onChange={(e) => setNewService((prev) => ({ ...prev, phone: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Email"
+                    value={newService.email}
+                    onChange={(e) => setNewService((prev) => ({ ...prev, email: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Notes"
+                    value={newService.notes}
+                    onChange={(e) => setNewService((prev) => ({ ...prev, notes: e.target.value }))}
+                    style={{ gridColumn: '1 / span 2' }}
+                  />
+                </div>
+                <button className="button" type="button" onClick={handleAddServiceCompany} style={{ marginTop: '0.5rem' }}>
+                  Add service company
+                </button>
+              </div>
+
+              <button className="button" type="submit">
+                Save
+              </button>
+              {saved ? <div className="muted">Settings saved (mock)</div> : null}
+            </>
+          ) : (
+            <div className="muted">Select a site to load settings.</div>
+          )}
+        </form>
+                </div>
+              </div>
+
+              {serviceCompanies.length ? (
+                <div className="card" style={{ margin: 0 }}>
+                  <div className="card-header">
+                    <div style={{ fontWeight: 700 }}>All service partners</div>
+                    <div className="muted">Keep multiple providers and pick the primary</div>
+                  </div>
+                  <div className="grid" style={{ gap: '0.5rem' }}>
+                    {serviceCompanies.map((s) => (
+                      <div
+                        key={s.id}
+                        style={{
+                          border: '1px solid var(--border)',
+                          borderRadius: 10,
+                          padding: '0.6rem 0.8rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{s.name}</div>
+                          <div className="muted">{s.contactName || 'Contact TBD'}</div>
+                          <div className="muted" style={{ fontSize: '0.85rem' }}>
+                            {s.phone || ''} {s.email ? `• ${s.email}` : ''}
+                          </div>
+                        </div>
+                        <button className="button ghost" type="button" onClick={() => handleSetPrimaryService(s)}>
+                          Set as primary
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+  );
+}

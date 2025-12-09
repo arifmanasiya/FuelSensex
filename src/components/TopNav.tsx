@@ -6,7 +6,7 @@ export default function TopNav({ onMenuToggle }: Props) {
   return (
     <header className="topnav" style={{ justifyContent: 'flex-start' }}>
       <button
-        className="button ghost responsive-button mobile-menu-button"
+        className="button ghost responsive-button mobile-menu-button mobile-only"
         type="button"
         aria-label="Open navigation"
         onClick={onMenuToggle}

@@ -22,8 +22,8 @@ const companyLinks = [
 
 export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onLinkClick?: () => void }) {
   const [openAlerts, setOpenAlerts] = useState(0);
-  const [productOpen, setProductOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 900 : true));
-  const [companyOpen, setCompanyOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 900 : true));
+  const [productOpen, setProductOpen] = useState(true);
+  const [companyOpen, setCompanyOpen] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,26 +52,6 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
     <aside className={sidebarClass}>
       <div className="sidebar-header">
         <div className="brand">FuelSense</div>
-        <div className="mobile-toggle-row mobile-only">
-          <button
-            className="group-toggle"
-            type="button"
-            aria-expanded={productOpen}
-            onClick={() => setProductOpen((prev) => !prev)}
-          >
-            <span>FuelSense</span>
-            <span>{productOpen ? '▾' : '▸'}</span>
-          </button>
-          <button
-            className="group-toggle"
-            type="button"
-            aria-expanded={companyOpen}
-            onClick={() => setCompanyOpen((prev) => !prev)}
-          >
-            <span>Company</span>
-            <span>{companyOpen ? '▾' : '▸'}</span>
-          </button>
-        </div>
       </div>
 
       <div className="nav-group">

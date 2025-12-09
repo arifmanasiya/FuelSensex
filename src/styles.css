@@ -97,6 +97,11 @@ a {
   gap: 0.6rem;
   transition: background 0.15s ease, color 0.15s ease;
   position: relative;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
 }
 
 .nav-link.active,
@@ -125,6 +130,10 @@ a {
   line-height: 1.2;
   min-width: 22px;
   text-align: center;
+}
+
+.nav-action {
+  padding: 0.75rem 0.9rem;
 }
 
 .topnav {

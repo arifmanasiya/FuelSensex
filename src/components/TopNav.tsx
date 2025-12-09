@@ -1,18 +1,9 @@
-import { useNavigate } from 'react-router-dom';
-
 interface Props {
   onMenuToggle?: () => void;
 }
 
 export default function TopNav({ onMenuToggle }: Props) {
   const userName = localStorage.getItem('fuelguard-user') || 'Station Owner';
-  const navigate = useNavigate();
-
-  function handleLogout() {
-    localStorage.removeItem('fuelguard-token');
-    localStorage.removeItem('fuelguard-user');
-    navigate('/login');
-  }
 
   return (
     <header className="topnav">
@@ -41,12 +32,6 @@ export default function TopNav({ onMenuToggle }: Props) {
           <span className="text">Feedback</span>
         </a>
         <div className="pill">{userName}</div>
-        <button className="button ghost responsive-button" type="button" onClick={handleLogout}>
-          <span className="icon" aria-hidden="true">
-            ⎋
-          </span>
-          <span className="text">Logout</span>
-        </button>
       </div>
     </header>
   );

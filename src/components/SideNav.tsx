@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { get } from '../api/apiClient';
 import type { Alert } from '../types';
 
@@ -18,6 +18,7 @@ const companyLinks = [
 export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onLinkClick?: () => void }) {
   const [openAlerts, setOpenAlerts] = useState(0);
   const [companyOpen, setCompanyOpen] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     get<Alert[]>('/alerts')
@@ -31,8 +32,16 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
     }
   }, []);
 
+  function handleLogout() {
+    localStorage.removeItem('fuelguard-token');
+    localStorage.removeItem('fuelguard-user');
+    navigate('/login');
+  }
+
+  const sidebarClass = 'sidebar' + (isOpen ? ' open' : '');
+
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+    <aside className={sidebarClass}>
       <div className="brand">FuelSense</div>
       <nav className="nav-links">
         {productLinks.map((link) => (
@@ -71,6 +80,10 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
               <span className="nav-label">{link.label}</span>
             </NavLink>
           ))}
+          <button className="nav-link nav-action" type="button" onClick={handleLogout}>
+            <span className="nav-icon">⎋</span>
+            <span className="nav-label">Logout</span>
+          </button>
         </div>
       </div>
     </aside>

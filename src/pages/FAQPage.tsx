@@ -47,7 +47,7 @@ export default function FAQPage() {
           </Section>
 
           <Section title="Can I switch between stores quickly?">
-            Yes. Use the store selector in the header or open All Notifications for a multi-site overview. Works whether you run one flagship
+            Yes. Use the store selector in the header or open Notifications for a multi-site overview. Works whether you run one flagship
             location or a growing network of sites.
           </Section>
 

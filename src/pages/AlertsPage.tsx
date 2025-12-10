@@ -55,26 +55,23 @@ export default function AlertsPage() {
             <span className="count-badge">{alerts.filter((a) => !a.isOpen).length}</span>
           </button>
         </div>
-        <table className="table">
-          <tbody />
-        </table>
         <div className="alerts-grid">
-          {alerts
+          {[...alerts]
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             .filter((a) => (alertTab === 'OPEN' ? a.isOpen : !a.isOpen))
             .map((a) => (
               <div key={a.id} className="alert-card">
                 <div className="alert-meta">
-                  <div style={{ fontWeight: 700 }}>{siteName(a.siteId)}</div>
-                  <div className="muted" style={{ fontSize: '0.9rem' }}>
-                    {new Date(a.timestamp).toLocaleString()}
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{siteName(a.siteId)}</div>
+                    <div className="muted" style={{ fontSize: '0.9rem' }}>
+                      {new Date(a.timestamp).toLocaleString()}
+                    </div>
                   </div>
+                  <AlertBadge severity={a.severity} />
                 </div>
                 <div className="alert-meta">
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <AlertBadge severity={a.severity} />
-                    <span style={{ fontWeight: 600 }}>{formatType(a.type)}</span>
-                  </div>
-                  <div className="muted">{a.isOpen ? 'Open' : 'Closed'}</div>
+                  <div style={{ fontWeight: 600 }}>{formatType(a.type)}</div>
                 </div>
                 <div className="muted">{a.message}</div>
                 {a.isOpen ? (

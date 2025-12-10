@@ -1,5 +1,6 @@
 ﻿import type {
   Alert,
+  BackOfficeSyncResult,
   DeliveryRecord,
   Jobber,
   FuelOrder,
@@ -509,6 +510,9 @@ let settings: SiteSettings[] = [
     serviceContactName: 'Ana Patel',
     servicePhone: '+1 (555) 200-1111',
     serviceEmail: 'dispatch@bluetech.com',
+    backOfficeProvider: 'MODISOFT',
+    backOfficeUsername: 'quickstop-owner',
+    backOfficePassword: 'password123',
   },
   {
     siteId: 'site-202',
@@ -529,6 +533,9 @@ let settings: SiteSettings[] = [
     serviceContactName: 'Luis Gomez',
     servicePhone: '+1 (555) 333-4444',
     serviceEmail: 'support@pumpcare.com',
+    backOfficeProvider: 'C_STORE',
+    backOfficeUsername: 'lakeside-admin',
+    backOfficePassword: 'welcome!',
   },
   {
     siteId: 'site-303',
@@ -549,23 +556,122 @@ let settings: SiteSettings[] = [
     serviceContactName: 'Kayla Chen',
     servicePhone: '+1 (555) 888-9999',
     serviceEmail: 'service@fuelsafe.io',
+    backOfficeProvider: 'MODISOFT',
+    backOfficeUsername: 'ridgeview-manager',
+    backOfficePassword: 'fuel-safe-303',
   },
 ];
 
 let runoutPredictions: RunoutPrediction[] = [
   { siteId: 'site-101', tankId: 'tank-101-1', gradeCode: 'REG', hoursToTenPercent: 9, hoursToEmpty: 27 },
   { siteId: 'site-101', tankId: 'tank-101-2', gradeCode: 'PREM', hoursToTenPercent: 21, hoursToEmpty: 60 },
-  { siteId: 'site-101', tankId: 'tank-101-4', gradeCode: 'MID', hoursToTenPercent: 12, hoursToEmpty: 34 },
   { siteId: 'site-101', tankId: 'tank-101-3', gradeCode: 'DSL', hoursToTenPercent: 36, hoursToEmpty: 80 },
   { siteId: 'site-202', tankId: 'tank-202-1', gradeCode: 'REG', hoursToTenPercent: 30, hoursToEmpty: 72 },
   { siteId: 'site-202', tankId: 'tank-202-2', gradeCode: 'DSL', hoursToTenPercent: 7, hoursToEmpty: 19 },
   { siteId: 'site-202', tankId: 'tank-202-3', gradeCode: 'PREM', hoursToTenPercent: 18, hoursToEmpty: 48 },
-  { siteId: 'site-202', tankId: 'tank-202-4', gradeCode: 'MID', hoursToTenPercent: 15, hoursToEmpty: 40 },
   { siteId: 'site-303', tankId: 'tank-303-1', gradeCode: 'REG', hoursToTenPercent: 5, hoursToEmpty: 14 },
   { siteId: 'site-303', tankId: 'tank-303-2', gradeCode: 'PREM', hoursToTenPercent: 11, hoursToEmpty: 29 },
   { siteId: 'site-303', tankId: 'tank-303-3', gradeCode: 'DSL', hoursToTenPercent: 9, hoursToEmpty: 24 },
-  { siteId: 'site-303', tankId: 'tank-303-4', gradeCode: 'MID', hoursToTenPercent: 6, hoursToEmpty: 18 },
 ];
+
+function computeLowestTankPercent(siteId: string): number {
+  const siteTanks = tanks.filter((t) => t.siteId === siteId && t.gradeCode !== 'MID');
+  if (!siteTanks.length) return 0;
+  const percents = siteTanks.map((t) => (t.currentGallons / t.capacityGallons) * 100);
+  return Math.round(Math.min(...percents));
+}
+
+const MID_PREM_RATIO = 0.6;
+const MID_REG_RATIO = 0.4;
+
+function getPhysicalSiteTanks(siteId: string): Tank[] {
+  return tanks.filter((t) => t.siteId === siteId && t.gradeCode !== 'MID');
+}
+
+function computeBlendedGallons(regGallons: number, premGallons: number): number {
+  const potentialFromReg = regGallons / MID_REG_RATIO;
+  const potentialFromPrem = premGallons / MID_PREM_RATIO;
+  return Math.round(Math.min(potentialFromReg, potentialFromPrem));
+}
+
+function withComputedSummary(site: SiteSummary): SiteSummary {
+  const siteAlerts = alerts.filter((a) => a.siteId === site.id);
+  const openCount = siteAlerts.filter((a) => a.isOpen).length;
+  return { ...site, lowestTankPercent: computeLowestTankPercent(site.id), openAlertCount: openCount };
+}
+
+function deriveMidTank(siteId: string): Tank | null {
+  const reg = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'REG');
+  const prem = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'PREM');
+  if (!reg || !prem) return null;
+  const capacityGallons = computeBlendedGallons(reg.capacityGallons, prem.capacityGallons);
+  const currentGallons = computeBlendedGallons(reg.currentGallons, prem.currentGallons);
+  const temperatureC = Math.round(((reg.temperatureC + prem.temperatureC) / 2) * 10) / 10;
+  return {
+    id: `mid-${siteId}`,
+    siteId,
+    name: 'Midgrade 89',
+    gradeCode: 'MID',
+    capacityGallons,
+    currentGallons,
+    waterLevelInches: 0,
+    temperatureC,
+    status: 'OK',
+  };
+}
+
+function computeRunoutForSite(siteId: string): RunoutPrediction[] {
+  const siteTanks = getPhysicalSiteTanks(siteId);
+  const staticPreds = runoutPredictions.filter((r) => r.siteId === siteId);
+
+  const siteEvents = varianceEvents
+    .filter((v) => v.siteId === siteId)
+    .map((v) => ({ date: new Date(v.timestamp).toDateString(), gallons: Math.abs(v.varianceGallons) }))
+    .reduce<Record<string, number>>((acc, ev) => {
+      acc[ev.date] = (acc[ev.date] || 0) + ev.gallons;
+      return acc;
+    }, {});
+
+  const dailyTotals = Object.values(siteEvents).sort((a, b) => b - a);
+  const periods = 5;
+  const alpha = 2 / (periods + 1);
+  let ema = 600;
+  dailyTotals.forEach((val, idx) => {
+    ema = idx === 0 ? val : val * alpha + ema * (1 - alpha);
+  });
+
+  const burnPerHour = ema / 24;
+
+  const preds = siteTanks.map((t) => {
+    const tenPercentLevel = 0.1 * t.capacityGallons;
+    const hoursToTen =
+      burnPerHour > 0 ? Math.max(Math.floor((t.currentGallons - tenPercentLevel) / burnPerHour), 0) : 0;
+    const hoursToEmpty = burnPerHour > 0 ? Math.max(Math.floor(t.currentGallons / burnPerHour), 0) : 0;
+    const match = staticPreds.find((r) => r.tankId === t.id);
+    return {
+      siteId,
+      tankId: t.id,
+      gradeCode: t.gradeCode,
+      hoursToTenPercent: match?.hoursToTenPercent ?? hoursToTen,
+      hoursToEmpty: match?.hoursToEmpty ?? hoursToEmpty,
+    };
+  });
+
+  const regRunout = preds.find((p) => p.gradeCode === 'REG');
+  const premRunout = preds.find((p) => p.gradeCode === 'PREM');
+  const midTank = deriveMidTank(siteId);
+  if (midTank && regRunout && premRunout) {
+    preds.push({
+      siteId,
+      tankId: midTank.id,
+      gradeCode: 'MID',
+      hoursToTenPercent: Math.round(regRunout.hoursToTenPercent * 0.4 + premRunout.hoursToTenPercent * 0.6),
+      hoursToEmpty: Math.round(regRunout.hoursToEmpty * 0.4 + premRunout.hoursToEmpty * 0.6),
+    });
+  }
+
+  return preds;
+}
 
 let serviceCompanies: ServiceCompany[] = [
   { id: 'svc-1', siteId: 'site-101', name: 'BlueTech Services', contactName: 'Ana Patel', phone: '+1 (555) 200-1111', email: 'dispatch@bluetech.com', notes: '24/7 dispatch' },
@@ -622,14 +728,16 @@ let fuelOrders: FuelOrder[] = [
 ];
 
 function buildOrderSuggestion(siteId: string): OrderSuggestion {
-  const siteTanks = tanks.filter((t) => t.siteId === siteId);
+  const siteTanks = getPhysicalSiteTanks(siteId);
+  const mid = deriveMidTank(siteId);
+  const allTanks = mid ? [...siteTanks, mid] : siteTanks;
+  const runouts = computeRunoutForSite(siteId);
   return {
     siteId,
     generatedAt: new Date().toISOString(),
-    suggestedLines: siteTanks.map((t) => {
+    suggestedLines: allTanks.map((t) => {
       const percentFull = (t.currentGallons / t.capacityGallons) * 100;
-      const estHoursToTenPercent =
-        runoutPredictions.find((r) => r.tankId === t.id)?.hoursToTenPercent ?? 24;
+      const estHoursToTenPercent = runouts.find((r) => r.tankId === t.id)?.hoursToTenPercent ?? 24;
       const suggestedOrderGallons = Math.max(0, t.capacityGallons - t.currentGallons - 100);
       return {
         gradeCode: t.gradeCode,
@@ -684,7 +792,7 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
   }
 
   if (method === 'GET' && path === '/sites') {
-    return delay(sites as unknown as T);
+    return delay(sites.map(withComputedSummary) as unknown as T);
   }
 
   const siteMatch = path.match(/^\/sites\/([^/]+)(.*)$/);
@@ -695,12 +803,46 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
     if (method === 'GET' && (subPath === '' || subPath === '/')) {
       const site = sites.find((s) => s.id === siteId);
       if (!site) throw new Error('Site not found');
-      return delay(site as unknown as T);
+      return delay(withComputedSummary(site) as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/tanks') {
-      const siteTanks = tanks.filter((t) => t.siteId === siteId);
-      return delay(siteTanks as unknown as T);
+      const siteTanks = getPhysicalSiteTanks(siteId);
+      const mid = deriveMidTank(siteId);
+      const response = mid ? [...siteTanks, mid] : siteTanks;
+      return delay(response as unknown as T);
+    }
+
+    if (method === 'GET' && subPath === '/overview') {
+      const site = sites.find((s) => s.id === siteId);
+      if (!site) throw new Error('Site not found');
+      const siteTanks = getPhysicalSiteTanks(siteId);
+      const mid = deriveMidTank(siteId);
+      const allTanks = mid ? [...siteTanks, mid] : siteTanks;
+      const siteAlerts = alerts.filter((a) => a.siteId === siteId);
+      const siteDeliveries = deliveries.filter((d) => d.siteId === siteId);
+      const preds = computeRunoutForSite(siteId);
+      const siteEvents = varianceEvents.filter((v) => v.siteId === siteId);
+      const todayGallons = siteEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
+      const todayValue = todayGallons * 3.5;
+      const last7DaysGallons = todayGallons * 3;
+      const last7DaysValue = last7DaysGallons * 3.5;
+      const siteOrders = fuelOrders.filter((o) => o.siteId === siteId);
+      return delay(
+        {
+          site: withComputedSummary(site),
+          tanks: allTanks,
+          alerts: siteAlerts,
+          deliveries: siteDeliveries,
+          runout: preds,
+          variance: {
+            today: { gallons: todayGallons, value: todayValue },
+            last7Days: { gallons: last7DaysGallons, value: last7DaysValue },
+            events: siteEvents,
+          },
+          orders: siteOrders,
+        } as unknown as T
+      );
     }
 
     if (method === 'GET' && subPath === '/alerts') {
@@ -856,8 +998,24 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
     }
 
     if (method === 'GET' && subPath === '/runout') {
-      const preds = runoutPredictions.filter((r) => r.siteId === siteId);
+      const preds = computeRunoutForSite(siteId);
       return delay(preds as unknown as T);
+    }
+
+    if (method === 'POST' && subPath === '/backoffice-sync') {
+      const s = settings.find((st) => st.siteId === siteId);
+      const provider = s?.backOfficeProvider ?? 'MODISOFT';
+      const providerLabel = provider === 'MODISOFT' ? 'Modisoft' : 'C-Store';
+      const payload = (body || {}) as { tankId?: string; gradeCode?: string };
+      const result: BackOfficeSyncResult = {
+        siteId,
+        provider,
+        status: 'QUEUED',
+        startedAt: new Date().toISOString(),
+        message: `Sync queued with ${providerLabel} for ${payload.gradeCode || 'all grades'} (mock).`,
+        ticketId: `bosync-${Date.now()}`,
+      };
+      return delay(result as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/settings') {
@@ -877,19 +1035,22 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
           dailyVarianceAlertGallons: 50,
           notifyByEmail: true,
           notifyBySms: false,
-          preferredComm: 'EMAIL',
-          alertFrequencyCritical: 'IMMEDIATE',
-          alertFrequencyWarning: 'HOURLY',
-          alertFrequencyInfo: 'DAILY',
-          jobberId: jobbers[0]?.id,
-          jobberContactName: jobbers[0]?.contactName,
-          jobberPhone: jobbers[0]?.phone,
-          jobberEmail: jobbers[0]?.email,
-          serviceCompanyId: serviceCompanies.find((c) => c.siteId === siteId)?.id ?? serviceCompanies[0]?.id,
-          serviceContactName: serviceCompanies.find((c) => c.siteId === siteId)?.contactName,
-          servicePhone: serviceCompanies.find((c) => c.siteId === siteId)?.phone,
-          serviceEmail: serviceCompanies.find((c) => c.siteId === siteId)?.email,
-          serviceNotes: serviceCompanies.find((c) => c.siteId === siteId)?.notes,
+        preferredComm: 'EMAIL',
+        alertFrequencyCritical: 'IMMEDIATE',
+        alertFrequencyWarning: 'HOURLY',
+        alertFrequencyInfo: 'DAILY',
+        jobberId: jobbers[0]?.id,
+        jobberContactName: jobbers[0]?.contactName,
+        jobberPhone: jobbers[0]?.phone,
+        jobberEmail: jobbers[0]?.email,
+        serviceCompanyId: serviceCompanies.find((c) => c.siteId === siteId)?.id ?? serviceCompanies[0]?.id,
+        serviceContactName: serviceCompanies.find((c) => c.siteId === siteId)?.contactName,
+        servicePhone: serviceCompanies.find((c) => c.siteId === siteId)?.phone,
+        serviceEmail: serviceCompanies.find((c) => c.siteId === siteId)?.email,
+        serviceNotes: serviceCompanies.find((c) => c.siteId === siteId)?.notes,
+        backOfficeProvider: 'MODISOFT',
+        backOfficeUsername: '',
+        backOfficePassword: '',
         };
         settings.push(s);
       }

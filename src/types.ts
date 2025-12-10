@@ -166,6 +166,18 @@ export interface SiteSettings {
   servicePhone?: string;
   serviceEmail?: string;
   serviceNotes?: string;
+  backOfficeProvider?: 'MODISOFT' | 'C_STORE';
+  backOfficeUsername?: string;
+  backOfficePassword?: string;
+}
+
+export interface BackOfficeSyncResult {
+  siteId: string;
+  provider: 'MODISOFT' | 'C_STORE';
+  status: 'QUEUED' | 'SUCCESS' | 'FAILED';
+  startedAt: string;
+  message: string;
+  ticketId?: string;
 }
 
 export interface User {

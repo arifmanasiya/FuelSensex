@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TopNav from './TopNav';
 import SideNav from './SideNav';
-import SalesCTA from './SalesCTA';
 import FeedbackBanner from './FeedbackBanner';
 import { useState } from 'react';
 
@@ -38,7 +37,6 @@ export default function Layout({ children }: Props) {
           </div>
         </footer>
       </div>
-      <SalesCTA />
       {mobileNavOpen ? <div className="backdrop" onClick={() => setMobileNavOpen(false)} /> : null}
     </div>
   );

@@ -14,71 +14,57 @@ function statusBadge(status: DeliveryRecord['status']) {
 }
 
 export default function DeliveryTable({ deliveries, onMarkOk, onMarkShort, onReportIssue }: Props) {
+  const sortedDeliveries = [...deliveries].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
   return (
     <div className="card">
       <div className="card-header">
         <div style={{ fontWeight: 700 }}>Recent Deliveries</div>
         <div className="muted">{deliveries.length} records</div>
       </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Date/Time</th>
-            <th>Supplier</th>
-            <th>Grade</th>
-            <th>Delivery ticket (gal)</th>
-            <th>Previous level (gal)</th>
-            <th>Tank reading (gal)</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {deliveries.map((d) => (
-            <tr key={d.id}>
-              {/** simple mock: derive previous level as current reading minus delivered gallons if not provided */}              
-              <td>{new Date(d.timestamp).toLocaleString()}</td>
-              <td>{d.supplier}</td>
-              <td>{d.gradeCode}</td>
-              <td>{d.bolGallons.toLocaleString()}</td>
-              <td>{(d.preDeliveryGallons ?? Math.max(d.atgReceivedGallons - d.bolGallons, 0)).toLocaleString()}</td>
-              <td>{d.atgReceivedGallons.toLocaleString()}</td>
-              <td>{statusBadge(d.status)}</td>
-              <td>
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  {d.status === 'CHECK' && onMarkOk ? (
-                    <button
-                      className="button"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-                      onClick={() => onMarkOk(d.id)}
-                    >
-                      Mark received
-                    </button>
-                  ) : null}
-                  {d.status === 'CHECK' && onMarkShort ? (
-                    <button
-                      className="button ghost"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-                      onClick={() => onMarkShort(d.id)}
-                    >
-                      Mark short
-                    </button>
-                  ) : null}
-                  {onReportIssue ? (
-                    <button
-                      className="button ghost"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-                      onClick={() => onReportIssue(d.id)}
-                    >
-                      Report issue
-                    </button>
-                  ) : null}
+      <div className="list-grid">
+        {sortedDeliveries.map((d) => {
+          const prevLevel = d.preDeliveryGallons ?? Math.max(d.atgReceivedGallons - d.bolGallons, 0);
+          return (
+            <div key={d.id} className="list-card">
+              <div className="list-meta">
+                <div>
+                  <div style={{ fontWeight: 700 }}>{d.supplier}</div>
+                  <div className="muted" style={{ fontSize: '0.9rem' }}>
+                    {new Date(d.timestamp).toLocaleString()}
+                  </div>
                 </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                {statusBadge(d.status)}
+              </div>
+              <div className="list-meta">
+                <div className="muted">{d.gradeCode} • Ticket {d.bolGallons.toLocaleString()} gal</div>
+              </div>
+              <div className="muted">
+                Prev: {prevLevel.toLocaleString()} gal · Tank reading: {d.atgReceivedGallons.toLocaleString()} gal
+              </div>
+              <div className="list-actions">
+                {d.status === 'CHECK' && onMarkOk ? (
+                  <button className="button" onClick={() => onMarkOk(d.id)}>
+                    Mark received
+                  </button>
+                ) : null}
+                {d.status === 'CHECK' && onMarkShort ? (
+                  <button className="button ghost" onClick={() => onMarkShort(d.id)}>
+                    Mark short
+                  </button>
+                ) : null}
+                {onReportIssue ? (
+                  <button className="button ghost" onClick={() => onReportIssue(d.id)}>
+                    Report issue
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
       {deliveries.length === 0 ? <div className="muted">No deliveries recorded.</div> : null}
     </div>
   );

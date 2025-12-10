@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 import { get, post, put } from '../api/apiClient';
+import Dropdown from '../components/Dropdown';
 import type { Jobber, ManagerContact, ServiceCompany, SiteSettings, SiteSummary } from '../types';
 
-type SettingsSection = 'notifications' | 'tanks' | 'jobbers' | 'services';
+type SettingsSection = 'notifications' | 'tanks' | 'backoffice' | 'jobbers' | 'services';
 
 const sections: { key: SettingsSection; label: string }[] = [
   { key: 'notifications', label: 'Notifications' },
   { key: 'tanks', label: 'Tank alerts' },
+  { key: 'backoffice', label: 'Back office' },
   { key: 'jobbers', label: 'Fuel jobbers' },
   { key: 'services', label: 'Service companies' },
 ];
@@ -408,6 +410,44 @@ export default function SettingsPage() {
       );
     }
 
+    if (section === 'backoffice') {
+      return (
+        <div className="stack" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div className="form-field">
+            <label>Back office provider</label>
+            <select
+              value={settings.backOfficeProvider || 'MODISOFT'}
+              onChange={(e) => handleChange('backOfficeProvider', e.target.value as SiteSettings['backOfficeProvider'])}
+            >
+              <option value="MODISOFT">Modisoft</option>
+              <option value="C_STORE">C-Store</option>
+            </select>
+            <div className="muted" style={{ marginTop: '0.25rem' }}>
+              Used for POS/back office syncing and inventory reconciliation.
+            </div>
+          </div>
+          <div className="form-field">
+            <label>Back office username</label>
+            <input
+              type="text"
+              value={settings.backOfficeUsername || ''}
+              onChange={(e) => handleChange('backOfficeUsername', e.target.value)}
+              placeholder="e.g. storeowner01"
+            />
+          </div>
+          <div className="form-field">
+            <label>Back office password</label>
+            <input
+              type="password"
+              value={settings.backOfficePassword || ''}
+              onChange={(e) => handleChange('backOfficePassword', e.target.value)}
+              placeholder="Enter password"
+            />
+          </div>
+        </div>
+      );
+    }
+
     if (section === 'jobbers') {
       return (
         <div className="stack" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -698,13 +738,19 @@ export default function SettingsPage() {
         <aside className="card" style={{ position: 'sticky', top: '1rem' }}>
           <div className="form-field" style={{ marginBottom: '0.75rem' }}>
             <label>Site</label>
-            <select value={selectedSiteId} onChange={(e) => setSelectedSiteId(e.target.value)}>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <Dropdown
+              variant="store"
+              searchable
+              trigger={<span>{sites.find((s) => s.id === selectedSiteId)?.name || 'Select site'}</span>}
+              items={sites.map((s) => ({
+                id: s.id,
+                label: s.name,
+                description: s.city,
+                status: s.status,
+                onSelect: () => setSelectedSiteId(s.id),
+              }))}
+              selectedId={selectedSiteId}
+            />
           </div>
           <div className="stack" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             {sections.map((s) => (
@@ -735,7 +781,13 @@ export default function SettingsPage() {
 
 function parseSection(hash: string): SettingsSection | null {
   const clean = hash.replace('#', '').toLowerCase();
-  if (clean === 'notifications' || clean === 'tanks' || clean === 'jobbers' || clean === 'services') {
+  if (
+    clean === 'notifications' ||
+    clean === 'tanks' ||
+    clean === 'backoffice' ||
+    clean === 'jobbers' ||
+    clean === 'services'
+  ) {
     return clean as SettingsSection;
   }
   return null;

@@ -1,43 +1,28 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 import { get, post, put } from '../api/apiClient';
 
 import type {
-
   Alert,
-
+  BackOfficeSyncResult,
   DeliveryRecord,
-
   FuelOrder,
-
   FuelOrderStatus,
-
   OrderSuggestion,
-
   RunoutPrediction,
-
   ServiceCompany,
-
   ServiceTicket,
-
   SiteSummary,
-
   Supplier,
-
   Tank,
-
   VarianceEvent,
-
 } from '../types';
 
-import KpiCard from '../components/KpiCard';
-
 import TankCard from '../components/TankCard';
-
+import Dropdown from '../components/Dropdown';
 import VarianceSummary from '../components/VarianceSummary';
-
 import AlertList from '../components/AlertList';
 
 import DeliveryTable from '../components/DeliveryTable';
@@ -62,10 +47,7 @@ const orderStatusFlow: FuelOrderStatus[] = ['REQUESTED', 'CONFIRMED', 'EN_ROUTE'
 
 export default function SiteDetailPage() {
   const { siteId } = useParams();
-  const navigate = useNavigate();
-
   const [site, setSite] = useState<SiteSummary | null>(null);
-  const [siteOptions, setSiteOptions] = useState<SiteSummary[]>([]);
 
   const [tanks, setTanks] = useState<Tank[]>([]);
 
@@ -131,6 +113,10 @@ export default function SiteDetailPage() {
 
   const [orderNotes, setOrderNotes] = useState('');
 
+  const [backOfficeSyncing, setBackOfficeSyncing] = useState<string | null>(null);
+  const [backOfficeMessage, setBackOfficeMessage] = useState('');
+
+  const [viewTab, setViewTab] = useState<'overview' | 'loss' | 'orders' | 'alerts' | 'service'>('overview');
 
 
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({
@@ -160,10 +146,6 @@ export default function SiteDetailPage() {
     notes: string;
   }>({ open: false, issue: '', providerId: '', contactName: '', phone: '', notes: '' });
 
-  const [viewTab, setViewTab] = useState<'overview' | 'loss' | 'orders' | 'alerts' | 'service'>('overview');
-
-
-
   const orderingRef = useRef<HTMLDivElement | null>(null);
 
 
@@ -181,24 +163,6 @@ export default function SiteDetailPage() {
       .filter((v) => Date.now() - new Date(v.timestamp).getTime() <= 30 * 24 * 60 * 60 * 1000)
       .reduce((sum, v) => sum + v.varianceGallons, 0) ?? 0;
 
-  const hasTankIssues = tanks.some((t) => t.status === 'LOW' || t.status === 'CRITICAL' || t.status === 'WATER');
-
-  const healthTooltip =
-
-    site?.status === 'HEALTHY'
-
-      ? hasTankIssues
-
-        ? 'Overall alerts/variance are healthy, but one or more tanks are low/critical - see tank cards.'
-
-        : 'No critical alerts/variance and tanks look good.'
-
-      : site?.status === 'ATTENTION'
-
-      ? 'Alerts/variance need attention; tank cards show specific products impacted.'
-
-      : 'Critical alerts/variance active; check tank cards for products at risk.';
-
 
 
   useEffect(() => {
@@ -208,7 +172,6 @@ export default function SiteDetailPage() {
     setLoading(true);
 
     Promise.all([
-      get<SiteSummary[]>(`/sites`),
       get<SiteSummary>(`/sites/${siteId}`),
       get<Tank[]>(`/sites/${siteId}/tanks`),
       get<VarianceResponse>(`/sites/${siteId}/variance`),
@@ -225,7 +188,6 @@ export default function SiteDetailPage() {
       .then(
 
         ([
-          sitesRes,
           siteRes,
           tankRes,
           varianceRes,
@@ -238,7 +200,6 @@ export default function SiteDetailPage() {
           svcRes,
           ticketRes,
         ]) => {
-          setSiteOptions(sitesRes);
           setSite(siteRes);
           setTanks(tankRes);
 
@@ -374,6 +335,8 @@ export default function SiteDetailPage() {
 
   }, [alerts, deliveries, variance]);
 
+  const viewSelectValue = viewTab === 'service' ? 'overview' : viewTab;
+  const openAlertCount = alerts.filter((a) => a.isOpen).length;
 
 
   if (!siteId) return <div>Missing site id</div>;
@@ -770,6 +733,74 @@ export default function SiteDetailPage() {
 
 
 
+  async function handleBackOfficeSync(tank: Tank) {
+
+    if (!siteId) return;
+
+    setBackOfficeSyncing(tank.id);
+
+    setBackOfficeMessage('');
+
+    try {
+
+      const res = await post<BackOfficeSyncResult>(`/sites/${siteId}/backoffice-sync`, {
+
+        tankId: tank.id,
+
+        gradeCode: tank.gradeCode,
+
+      });
+
+      setBackOfficeMessage(res.message);
+
+    } catch (err) {
+
+      console.error(err);
+
+      setBackOfficeMessage('Back office sync failed (mock).');
+
+    } finally {
+
+      setBackOfficeSyncing(null);
+
+    }
+
+  }
+
+  async function handleBackOfficeSyncAll() {
+
+    if (!siteId) return;
+
+    setBackOfficeSyncing('ALL');
+
+    setBackOfficeMessage('');
+
+    try {
+
+      const res = await post<BackOfficeSyncResult>(`/sites/${siteId}/backoffice-sync`, {
+
+        gradeCode: 'ALL',
+
+      });
+
+      setBackOfficeMessage(res.message);
+
+    } catch (err) {
+
+      console.error(err);
+
+      setBackOfficeMessage('Back office sync failed (mock).');
+
+    } finally {
+
+      setBackOfficeSyncing(null);
+
+    }
+
+  }
+
+
+
   function handleRequestService(tank: Tank) {
 
     openServiceModal(`Service requested for ${tank.name} to address water/critical status.`);
@@ -863,154 +894,61 @@ export default function SiteDetailPage() {
     <div className="page">
 
       <div className="card">
-
-        <div className="card-header">
-
+        <div
+          className="card-header"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '0.75rem',
+            justifyContent: 'space-between',
+          }}
+        >
           <div>
-
             <div style={{ fontWeight: 800, fontSize: '1.25rem' }}>{site.name}</div>
-
             <div className="muted">
-
               {site.address} - {site.city}
-
             </div>
-
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-
-            <span title={healthTooltip}>
-
-              <StatusChip status={site.status} />
-
-            </span>
-
-            <span
-
-              title={healthTooltip}
-
-              aria-label="Site health explanation"
-
-              style={{
-
-                display: 'inline-flex',
-
-                alignItems: 'center',
-
-                justifyContent: 'center',
-
-                width: 20,
-
-                height: 20,
-
-                borderRadius: '50%',
-
-                border: '1px solid var(--border)',
-
-                background: '#fff',
-
-                color: '#0b1a2d',
-
-                fontWeight: 700,
-
-              cursor: 'help',
-
-            }}
-
-          >
-
-            i
-
-          </span>
-
-            <select
-              value={site.id}
-              onChange={(e) => navigate(`/sites/${e.target.value}`)}
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: '0.35rem 0.55rem',
-                fontFamily: 'inherit',
-                background: '#fff',
-                cursor: 'pointer',
-              }}
-            >
-              {siteOptions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <Dropdown
+                trigger={
+                  <span>
+                    {viewSelectValue === 'overview'
+                      ? 'Views'
+                      : viewSelectValue === 'loss'
+                      ? 'Fuel Loss History'
+                      : viewSelectValue === 'orders'
+                      ? 'Orders & deliveries'
+                      : 'Notifications'}
+                  </span>
+                }
+                items={[
+                  { id: 'overview', label: 'Overview', onSelect: () => setViewTab('overview') },
+                  { id: 'loss', label: 'Fuel Loss History', onSelect: () => setViewTab('loss') },
+                  { id: 'orders', label: 'Orders & deliveries', onSelect: () => setViewTab('orders') },
+                  {
+                    id: 'alerts',
+                    label: `Notifications (${openAlertCount})`,
+                    onSelect: () => setViewTab('alerts'),
+                  },
+                ]}
+                selectedId={viewTab}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <Dropdown
+                trigger={<span>Actions</span>}
+                items={[
+                  { id: 'order', label: 'Order fuel', onSelect: () => setViewTab('orders') },
+                  { id: 'service', label: 'Request Service', onSelect: () => setViewTab('service') },
+                  { id: 'sync', label: 'Sync with back office', onSelect: () => handleBackOfficeSyncAll() },
+                ]}
+              />
+            </div>
           </div>
-
         </div>
-
-        <div className="kpi-grid">
-
-          <KpiCard
-
-            label="Fuel loss today"
-
-            value={`${todayGallons.toFixed(0)} gal lost`}
-
-            subtext={variance ? todayValue.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : ''}
-
-          />
-
-          <KpiCard label="Active alerts" value={`${alerts.length}`} />
-
-          <KpiCard label="Lowest tank level" value={`${site.lowestTankPercent}%`} />
-
-        </div>
-
-      </div>
-
-
-
-      <div
-
-        style={{
-
-          display: 'flex',
-
-          gap: '0.5rem',
-
-          margin: '0.75rem 0 1rem',
-
-          flexWrap: 'wrap',
-
-          alignItems: 'center',
-
-        }}
-
-      >
-
-        <button className={viewTab === 'overview' ? 'button' : 'button ghost'} onClick={() => setViewTab('overview')}>
-          Overview
-        </button>
-        <button className={viewTab === 'loss' ? 'button' : 'button ghost'} onClick={() => setViewTab('loss')}>
-          Fuel Loss History
-        </button>
-        <button className={viewTab === 'orders' ? 'button' : 'button ghost'} onClick={() => setViewTab('orders')}>
-          Orders & deliveries
-        </button>
-
-        <button className={viewTab === 'alerts' ? 'button' : 'button ghost'} onClick={() => setViewTab('alerts')}>
-
-          Notifications <span className="count-badge">{alerts.filter((a) => a.isOpen).length}</span>
-
-        </button>
-
-        <button className={viewTab === 'service' ? 'button' : 'button ghost'} onClick={() => setViewTab('service')}>
-
-          Service
-
-        </button>
-
-        <div style={{ flexGrow: 1 }} />
-
       </div>
 
       {viewTab === 'overview' ? (
@@ -1021,6 +959,9 @@ export default function SiteDetailPage() {
               style={{ fontSize: '0.8rem' }}
             >
               Loss today: {todayGallons.toLocaleString()} gal
+            </span>
+            <span className="badge badge-yellow" style={{ fontSize: '0.8rem' }}>
+              Loss value: {variance ? todayValue.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '$0'}
             </span>
             <span
               className={`badge ${last7Gallons < 0 ? 'badge-red' : last7Gallons > 0 ? 'badge-green' : 'badge-yellow'}`}
@@ -1034,7 +975,19 @@ export default function SiteDetailPage() {
             >
               This month: {last30Gallons.toLocaleString()} gal
             </span>
+            <span className="badge badge-yellow" style={{ fontSize: '0.8rem' }}>
+              Active alerts: {alerts.length}
+            </span>
+            <span
+              className={`badge ${
+                site.lowestTankPercent <= 10 ? 'badge-red' : site.lowestTankPercent <= 20 ? 'badge-yellow' : 'badge-green'
+              }`}
+              style={{ fontSize: '0.8rem' }}
+            >
+              Lowest tank: {site.lowestTankPercent}%
+            </span>
           </div>
+          {backOfficeMessage ? <div className="muted">{backOfficeMessage}</div> : null}
           <div className="tanks-grid">
             {tanks
               .slice()
@@ -1079,6 +1032,8 @@ export default function SiteDetailPage() {
                   }
                   onOrder={openOrderModal}
                   onService={handleRequestService}
+                  onSync={handleBackOfficeSync}
+                  syncing={backOfficeSyncing === tank.id}
                 />
               ))}
           </div>
@@ -1127,34 +1082,36 @@ export default function SiteDetailPage() {
                   <div style={{ fontWeight: 700 }}>Recent loss events</div>
                   <div className="muted">{variance.events.length} records</div>
                 </div>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Grade</th>
-                      <th>Variance (gal)</th>
-                      <th>Severity</th>
-                      <th>Note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {variance.events.map((v) => (
-                      <tr key={v.id}>
-                        <td>{new Date(v.timestamp).toLocaleString()}</td>
-                        <td>{gradeLabel(v.gradeCode)}</td>
-                        <td style={{ color: v.varianceGallons < 0 ? '#ef4444' : '#16a34a' }}>
-                          {v.varianceGallons.toLocaleString()}
-                        </td>
-                        <td>
-                          <span className={`badge ${v.severity === 'CRITICAL' ? 'badge-red' : v.severity === 'WARNING' ? 'badge-yellow' : 'badge-green'}`}>
-                            {v.severity}
-                          </span>
-                        </td>
-                        <td className="muted">{v.note || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="list-grid">
+                  {[...variance.events]
+                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                    .map((v) => (
+                    <div className="list-card" key={v.id}>
+                      <div className="list-meta">
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{gradeLabel(v.gradeCode)}</div>
+                          <div className="muted">{new Date(v.timestamp).toLocaleString()}</div>
+                        </div>
+                        <span
+                          className={`badge ${
+                            v.severity === 'CRITICAL' ? 'badge-red' : v.severity === 'WARNING' ? 'badge-yellow' : 'badge-green'
+                          }`}
+                        >
+                          {v.severity}
+                        </span>
+                      </div>
+                      <div className="list-meta" style={{ justifyContent: 'flex-start', gap: '0.4rem' }}>
+                        <span
+                          className={`badge ${v.varianceGallons < 0 ? 'badge-red' : v.varianceGallons > 0 ? 'badge-green' : 'badge-yellow'}`}
+                          style={{ fontSize: '0.8rem' }}
+                        >
+                          {v.varianceGallons.toLocaleString()} gal
+                        </span>
+                        <span className="muted">{v.note || 'No note provided'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
                 {variance.events.length === 0 ? <div className="muted">No loss events logged.</div> : null}
               </div>
             </>
@@ -1166,7 +1123,66 @@ export default function SiteDetailPage() {
 
       {viewTab === 'orders' ? (
         <>
-          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <div className="grid" style={{ gridTemplateColumns: '1fr', gap: '1rem' }}>
+            <div className="card">
+              <div className="card-header">
+                <div style={{ fontWeight: 700 }}>Recent orders</div>
+                <div className="muted">{fuelOrders.length} records</div>
+              </div>
+              <div className="list-grid">
+                {[...fuelOrders]
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((o) => {
+                  const supplierName = suppliers.find((s) => s.id === o.supplierId)?.name || o.supplierId;
+                  const totalGallons = o.lines.reduce((sum, l) => sum + l.requestedGallons, 0);
+                  return (
+                    <div className="list-card" key={o.id}>
+                      <div className="list-meta">
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{supplierName}</div>
+                          <div className="muted" style={{ fontSize: '0.9rem' }}>
+                            {new Date(o.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                        <span className="badge badge-yellow">{o.status}</span>
+                      </div>
+                      <div className="list-meta" style={{ justifyContent: 'flex-start', gap: '0.4rem' }}>
+                        {o.lines.map((l) => (
+                          <span key={l.id} className="badge">
+                            {gradeLabel(l.gradeCode)} {l.requestedGallons.toLocaleString()} gal
+                          </span>
+                        ))}
+                      </div>
+                      <div className="muted">
+                        {new Date(o.requestedDeliveryWindowStart).toLocaleString()} –{' '}
+                        {new Date(o.requestedDeliveryWindowEnd).toLocaleString()}
+                      </div>
+                      <div className="list-meta">
+                        <span className="badge badge-blue">{totalGallons.toLocaleString()} gal total</span>
+                        <div className="list-actions">
+                          {o.status !== 'DELIVERED' && o.status !== 'CANCELLED' ? (
+                            <>
+                              <button className="button ghost" style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem' }} onClick={() => advanceOrder(o)}>
+                                Advance
+                              </button>
+                              <button
+                                className="button ghost"
+                                style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem', color: '#ef4444' }}
+                                onClick={() => cancelOrder(o)}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {fuelOrders.length === 0 ? <div className="muted">No orders yet.</div> : null}
+            </div>
+
             <DeliveryTable
               deliveries={deliveries}
               onMarkOk={(id) => {
@@ -1223,72 +1239,6 @@ export default function SiteDetailPage() {
                 }
               }}
             />
-
-            <div className="card">
-              <div className="card-header">
-                <div style={{ fontWeight: 700 }}>Recent orders</div>
-                <div className="muted">{fuelOrders.length} records</div>
-              </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Created</th>
-                    <th>Supplier</th>
-                    <th>Products</th>
-                    <th>Status</th>
-                    <th>Total gal</th>
-                    <th>Window</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fuelOrders.map((o) => (
-                    <tr key={o.id}>
-                      <td>{new Date(o.createdAt).toLocaleString()}</td>
-                      <td>{suppliers.find((s) => s.id === o.supplierId)?.name || o.supplierId}</td>
-                      <td>
-                        <div className="muted">
-                          {o.lines
-                            .map((l) => `${gradeLabel(l.gradeCode)} ${l.requestedGallons.toLocaleString()} gal`)
-                            .join(' | ')}
-                        </div>
-                      </td>
-                      <td>
-                        <span className="badge badge-yellow">{o.status}</span>
-                      </td>
-                      <td>{o.lines.reduce((sum, l) => sum + l.requestedGallons, 0).toLocaleString()}</td>
-                      <td>
-                        {new Date(o.requestedDeliveryWindowStart).toLocaleString()} -{' '}
-                        {new Date(o.requestedDeliveryWindowEnd).toLocaleString()}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                          {o.status !== 'DELIVERED' && o.status !== 'CANCELLED' ? (
-                            <>
-                              <button
-                                className="button ghost"
-                                style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem' }}
-                                onClick={() => advanceOrder(o)}
-                              >
-                                Advance
-                              </button>
-                              <button
-                                className="button ghost"
-                                style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem', color: '#ef4444' }}
-                                onClick={() => cancelOrder(o)}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {fuelOrders.length === 0 ? <div className="muted">No orders yet.</div> : null}
-            </div>
           </div>
 
           <div className="card" ref={orderingRef} id="ordering">
@@ -1336,7 +1286,10 @@ export default function SiteDetailPage() {
                   </div>
                 ))}
               </div>
-              <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.75rem' }}>
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem', marginTop: '0.75rem' }}
+              >
                 <div className="form-field">
                   <label>Supplier</label>
                   <select value={orderSupplierId} onChange={(e) => setOrderSupplierId(e.target.value)}>
@@ -1376,7 +1329,7 @@ export default function SiteDetailPage() {
         </>
       ) : null}
       {viewTab === 'alerts' ? (
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <div className="grid" style={{ gridTemplateColumns: '1fr', gap: '1rem' }}>
           <div className="card">
             <div className="card-header">
               <div style={{ fontWeight: 700 }}>Notifications</div>
@@ -1697,18 +1650,6 @@ export default function SiteDetailPage() {
     </div>
 
   );
-
-}
-
-
-
-function StatusChip({ status }: { status: SiteSummary['status'] }) {
-
-  if (status === 'HEALTHY') return <span className="status-chip">HEALTHY</span>;
-
-  if (status === 'ATTENTION') return <span className="status-chip">ATTENTION</span>;
-
-  return <span className="status-chip">CRITICAL</span>;
 
 }
 

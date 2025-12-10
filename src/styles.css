@@ -147,8 +147,13 @@ a {
   display: inline-flex;
 }
 
+/* show only on narrow viewports */
 .mobile-only {
-  display: none;
+  display: none !important;
+}
+
+.mobile-menu-button {
+  display: none !important;
 }
 
 .topnav {
@@ -158,9 +163,9 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 240px;
+  left: 0;
   right: 0;
   z-index: 20;
 }
@@ -174,9 +179,9 @@ a {
 }
 
 .content {
-  padding: 1.5rem;
-  padding-top: 80px;
-  padding-bottom: 80px;
+  padding: 1rem;
+  padding-top: 20px;
+  padding-bottom: 20px;
 }
 
 .page {
@@ -222,22 +227,22 @@ a {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .kpi {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.25rem;
 }
 
 .kpi .label {
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .kpi .value {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
 }
 
@@ -582,6 +587,163 @@ a {
   text-align: center;
 }
 
+.tab-dropdown {
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, #0b1a2d, #10223c);
+  color: #e5e7eb;
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  min-width: 190px;
+}
+
+.tab-dropdown:focus {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+
+.dropdown-trigger {
+  min-height: 36px;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f3f4f6;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dropdown-trigger:hover {
+  background: #e5e7eb;
+}
+
+.dropdown-surface.card {
+  position: absolute;
+  margin-top: 0.35rem;
+  min-width: 240px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px #0000001f;
+  border: 1px solid var(--border);
+  z-index: 30;
+  padding: 0.5rem;
+  opacity: 0;
+  transform: scale(0.98);
+  transform-origin: top;
+  transition: opacity 110ms cubic-bezier(0.16, 1, 0.3, 1), transform 110ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-surface.card.open {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dropdown-surface.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 24px #0000001f;
+  z-index: 50;
+  padding: 1rem;
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.dropdown-surface.sheet.open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.dropdown-surface.store {
+  min-width: 320px;
+}
+
+.dropdown-surface.row {
+  min-width: 180px;
+}
+
+.dropdown-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 40;
+}
+
+.dropdown-search input {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+}
+
+.dropdown-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  min-height: 48px;
+}
+
+.dropdown-item:hover,
+.dropdown-item.highlighted {
+  background: #f3f4f6;
+}
+
+.dropdown-item.selected {
+  border-color: #0ea5e9;
+}
+
+.dropdown-item-main {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.dropdown-item-desc {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.dropdown-empty {
+  padding: 0.6rem 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.dropdown-badge {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .pill {
   padding: 0.25rem 0.6rem;
   border-radius: 8px;
@@ -591,24 +753,7 @@ a {
 }
 
 .cta-drawer {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  max-width: 360px;
-  background: #0b1a2d;
-  color: #e5e7eb;
-  border-radius: 16px;
-  padding: 1rem;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  z-index: 50;
-}
-
-.cta-drawer .cta-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-  flex-wrap: wrap;
+  display: none;
 }
 
 .alerts-grid {
@@ -637,6 +782,52 @@ a {
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.list-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.list-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.45rem;
+  background: #fff;
+}
+
+.list-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.list-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+  align-items: center;
+  overflow-x: auto;
+  padding: 0.25rem 0;
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-bar .button,
+.tab-bar .button.ghost {
+  white-space: nowrap;
 }
 
 .modal-backdrop {
@@ -679,14 +870,15 @@ a {
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
   }
 
+  .mobile-only {
+    display: inline-flex;
+  }
+
   .main-shell {
     padding-left: 0 !important;
   }
 
   .topnav {
-    position: static;
-    left: 0;
-    right: 0;
     padding: 0.85rem 1rem;
   }
 
@@ -698,8 +890,16 @@ a {
 
   .content {
     padding: 1rem;
-    padding-top: 70px;
+    padding-top: 80px;
     padding-bottom: 70px;
+  }
+
+  .mobile-only {
+    display: inline-flex !important;
+  }
+
+  .mobile-menu-button {
+    display: inline-flex !important;
   }
 
   .card {
@@ -710,10 +910,7 @@ a {
   .kpi-grid,
   .tanks-grid {
     grid-template-columns: 1fr;
-  }
-
-  .nav-label {
-    display: none;
+    gap: 0.65rem;
   }
 
   .nav-link {

@@ -33,6 +33,10 @@ const issueCatalog: Record<
 };
 
 export default function AlertList({ alerts, title = 'Notifications', onClose, onAction }: Props) {
+  const sortedAlerts = [...alerts].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
   return (
     <div className="card">
       <div className="card-header">
@@ -40,46 +44,38 @@ export default function AlertList({ alerts, title = 'Notifications', onClose, on
         <div className="muted">{alerts.length} items</div>
       </div>
       <div className="grid" style={{ gap: '0.75rem' }}>
-        {alerts.map((alert) => (
-          <div
-            key={alert.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '0.75rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        {sortedAlerts.map((alert) => (
+          <div key={alert.id} className="list-card" style={{ display: 'grid', gap: '0.5rem' }}>
+            <div className="list-meta" style={{ alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>{formatType(alert.type)}</div>
+                <div className="muted" style={{ fontSize: '0.9rem' }}>
+                  {new Date(alert.timestamp).toLocaleString()}
+                </div>
+              </div>
               <AlertBadge severity={alert.severity} />
-                <div>
-                  <div style={{ fontWeight: 600 }}>{formatType(alert.type)}</div>
-                <div className="muted">{alert.message}</div>
-              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '220px', justifyContent: 'flex-end' }}>
-              <div className="muted" style={{ fontSize: '0.9rem' }}>{new Date(alert.timestamp).toLocaleString()}</div>
-              <div style={{ display: 'flex', gap: '0.25rem' }}>
-                {(issueCatalog[alert.type]?.actions || []).map((act) => (
-                  <button
-                    key={act.key}
-                    className="button ghost"
-                    style={{ padding: '0.35rem 0.6rem', fontSize: '0.85rem', opacity: alert.isOpen ? 1 : 0.4, minWidth: '110px', justifyContent: 'center' }}
-                    disabled={!alert.isOpen}
-                    onClick={() => alert.isOpen && onAction && onAction(alert, act.key)}
-                  >
-                    {act.label}
-                  </button>
-                ))}
+            <div className="muted">{alert.message}</div>
+            <div className="list-actions" style={{ justifyContent: 'flex-end' }}>
+              {(issueCatalog[alert.type]?.actions || []).map((act) => (
                 <button
+                  key={act.key}
                   className="button ghost"
-                  style={{ padding: '0.35rem 0.6rem', fontSize: '0.85rem', opacity: alert.isOpen ? 1 : 0.4, minWidth: '90px', justifyContent: 'center' }}
+                  style={{ padding: '0.35rem 0.6rem', fontSize: '0.85rem', opacity: alert.isOpen ? 1 : 0.4, minWidth: '110px', justifyContent: 'center' }}
                   disabled={!alert.isOpen}
-                  onClick={() => onClose && alert.isOpen && onClose(alert)}
+                  onClick={() => alert.isOpen && onAction && onAction(alert, act.key)}
                 >
-                  Close
+                  {act.label}
                 </button>
-              </div>
+              ))}
+              <button
+                className="button ghost"
+                style={{ padding: '0.35rem 0.6rem', fontSize: '0.85rem', opacity: alert.isOpen ? 1 : 0.4, minWidth: '90px', justifyContent: 'center' }}
+                disabled={!alert.isOpen}
+                onClick={() => onClose && alert.isOpen && onClose(alert)}
+              >
+                Close
+              </button>
             </div>
           </div>
         ))}

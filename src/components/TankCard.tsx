@@ -1,9 +1,12 @@
+import Dropdown from './Dropdown';
 import type { RunoutPrediction, Tank } from '../types';
 
 interface Props {
   tank: Tank;
   onOrder?: (tank: Tank) => void;
   onService?: (tank: Tank) => void;
+  onSync?: (tank: Tank) => void;
+  syncing?: boolean;
   runout?: RunoutPrediction;
   lossTodayGallons?: number;
   lossWeekGallons?: number;
@@ -17,9 +20,17 @@ function statusBadge(status: Tank['status']) {
   return <span className="badge badge-red">Water</span>;
 }
 
-export default function TankCard({ tank, onOrder, onService, runout, lossTodayGallons, lossWeekGallons, lossMonthGallons }: Props) {
+export default function TankCard({
+  tank,
+  onOrder,
+  onService,
+  onSync,
+  runout,
+  lossTodayGallons,
+  lossWeekGallons,
+  lossMonthGallons,
+}: Props) {
   const percent = Math.round((tank.currentGallons / tank.capacityGallons) * 100);
-  const urgentOrder = percent <= 25 || tank.status === 'LOW' || tank.status === 'CRITICAL';
   const showService = tank.status === 'WATER';
 
   return (
@@ -29,7 +40,33 @@ export default function TankCard({ tank, onOrder, onService, runout, lossTodayGa
           <div style={{ fontWeight: 700 }}>{tank.name}</div>
           <div className="muted">{tank.gradeCode}</div>
         </div>
-        {statusBadge(tank.status)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          {statusBadge(tank.status)}
+          {tank.gradeCode === 'MID' ? (
+            <span className="badge badge-yellow" style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+              Blend/virtual
+              <span
+                title="No physical tank; derived from Regular/Premium mix to gauge demand."
+                aria-label="Midgrade is a derived blend"
+                style={{ fontWeight: 700, cursor: 'help' }}
+              >
+                ⓘ
+              </span>
+            </span>
+          ) : null}
+          <Dropdown
+            variant="row"
+            align="right"
+            trigger={<span>•••</span>}
+            items={[
+              { id: 'order', label: 'Order fuel', onSelect: () => (onOrder ? onOrder(tank) : alert(`Ordering fuel for ${tank.name} (mock)`)) },
+              ...(tank.gradeCode !== 'MID'
+                ? [{ id: 'sync', label: 'Sync with back office', onSelect: () => (onSync ? onSync(tank) : alert(`Syncing ${tank.name} with back office (mock) to align inventory/tickets.`)) }]
+                : []),
+              ...(showService ? [{ id: 'service', label: 'Request service', onSelect: () => (onService ? onService(tank) : alert(`Requesting service for ${tank.name} (mock)`)) }] : []),
+            ]}
+          />
+        </div>
       </div>
       <div className="flex" style={{ justifyContent: 'space-between' }}>
         <div>
@@ -89,24 +126,7 @@ export default function TankCard({ tank, onOrder, onService, runout, lossTodayGa
           ) : null}
         </div>
       ) : null}
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-        <button
-          className={urgentOrder ? 'button' : 'button ghost'}
-          style={{ padding: '0.45rem 0.75rem', fontSize: '0.9rem' }}
-          onClick={() => (onOrder ? onOrder(tank) : alert(`Ordering fuel for ${tank.name} (mock)`))}
-        >
-          Order fuel now
-        </button>
-        {showService ? (
-          <button
-            className="button ghost"
-            style={{ padding: '0.45rem 0.75rem', fontSize: '0.9rem' }}
-            onClick={() => (onService ? onService(tank) : alert(`Requesting service for ${tank.name} (mock)`))}
-          >
-            Request service
-          </button>
-        ) : null}
-      </div>
+      {/* Action buttons removed; use row dropdown instead */}
     </div>
   );
 }

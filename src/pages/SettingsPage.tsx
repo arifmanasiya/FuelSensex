@@ -636,24 +636,24 @@ export default function SettingsPage() {
                 <label>Warn me when below (%)</label>
                 <input
                   type="number"
-                  value={settings.lowTankPercent}
-                  onChange={(e) => handleChange('lowTankPercent', Number(e.target.value))}
+                  defaultValue={settings.lowTankPercent}
+                  onBlur={(e) => handleChange('lowTankPercent', Number(e.target.value))}
                 />
               </div>
               <div className="form-field">
                 <label>Urgent alert when below (%)</label>
                 <input
                   type="number"
-                  value={settings.criticalTankPercent}
-                  onChange={(e) => handleChange('criticalTankPercent', Number(e.target.value))}
+                  defaultValue={settings.criticalTankPercent}
+                  onBlur={(e) => handleChange('criticalTankPercent', Number(e.target.value))}
                 />
               </div>
               <div className="form-field">
                 <label>Daily loss alert above (gal)</label>
                 <input
                   type="number"
-                  value={settings.dailyVarianceAlertGallons}
-                  onChange={(e) => handleChange('dailyVarianceAlertGallons', Number(e.target.value))}
+                  defaultValue={settings.dailyVarianceAlertGallons}
+                  onBlur={(e) => handleChange('dailyVarianceAlertGallons', Number(e.target.value))}
                 />
               </div>
             </div>
@@ -725,8 +725,8 @@ export default function SettingsPage() {
                 <label>Capacity notes</label>
                 <textarea
                   rows={2}
-                  value={settings.capacityNotes || ''}
-                  onChange={(e) => handleChange('capacityNotes', e.target.value)}
+                  defaultValue={settings.capacityNotes || ''}
+                  onBlur={(e) => handleChange('capacityNotes', e.target.value)}
                   style={{ padding: '0.75rem 0.9rem', borderRadius: 10, border: '1px solid var(--border)', fontFamily: 'inherit' }}
                   placeholder="e.g., Reg 12k, Prem 8k, Diesel 10k"
                 />
@@ -739,8 +739,8 @@ export default function SettingsPage() {
               <div className="form-field">
                 <label>Tank type policy</label>
                 <select
-                  value={settings.tankTypePolicy || 'ALLOW_VIRTUAL'}
-                  onChange={(e) => handleChange('tankTypePolicy', e.target.value as SiteSettings['tankTypePolicy'])}
+                  defaultValue={settings.tankTypePolicy || 'ALLOW_VIRTUAL'}
+                  onBlur={(e) => handleChange('tankTypePolicy', e.target.value as SiteSettings['tankTypePolicy'])}
                 >
                   <option value="PHYSICAL_ONLY">Physical tanks only</option>
                   <option value="ALLOW_VIRTUAL">Allow virtual/blended tanks</option>
@@ -750,8 +750,8 @@ export default function SettingsPage() {
                 <label>Virtual blend ratio</label>
                 <input
                   type="text"
-                  value={settings.virtualBlendRatio || ''}
-                  onChange={(e) => handleChange('virtualBlendRatio', e.target.value)}
+                  defaultValue={settings.virtualBlendRatio || ''}
+                  onBlur={(e) => handleChange('virtualBlendRatio', e.target.value)}
                   placeholder="e.g., 60/40 (Prem/Reg)"
                 />
               </div>
@@ -876,8 +876,8 @@ export default function SettingsPage() {
           <div className="form-field">
             <label>Back office provider</label>
             <select
-              value={settings.backOfficeProvider || 'MODISOFT'}
-              onChange={(e) => handleChange('backOfficeProvider', e.target.value as SiteSettings['backOfficeProvider'])}
+              defaultValue={settings.backOfficeProvider || 'MODISOFT'}
+              onBlur={(e) => handleChange('backOfficeProvider', e.target.value as SiteSettings['backOfficeProvider'])}
             >
               <option value="MODISOFT">Modisoft</option>
               <option value="C_STORE">C-Store</option>
@@ -890,8 +890,8 @@ export default function SettingsPage() {
             <label>Username</label>
             <input
               type="text"
-              value={settings.backOfficeUsername || ''}
-              onChange={(e) => handleChange('backOfficeUsername', e.target.value)}
+              defaultValue={settings.backOfficeUsername || ''}
+              onBlur={(e) => handleChange('backOfficeUsername', e.target.value)}
               placeholder="e.g. storeowner01"
             />
           </div>
@@ -899,8 +899,8 @@ export default function SettingsPage() {
             <label>Password</label>
             <input
               type="password"
-              value={settings.backOfficePassword || ''}
-              onChange={(e) => handleChange('backOfficePassword', e.target.value)}
+              defaultValue={settings.backOfficePassword || ''}
+              onBlur={(e) => handleChange('backOfficePassword', e.target.value)}
               placeholder="Enter password"
             />
           </div>

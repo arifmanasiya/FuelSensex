@@ -57,6 +57,8 @@ export default function SettingsPage() {
     perTank: false,
   });
   const [confirmDelete, setConfirmDelete] = useState<ManagerContact | null>(null);
+  const [confirmJobber, setConfirmJobber] = useState<Jobber | null>(null);
+  const [confirmService, setConfirmService] = useState<ServiceCompany | null>(null);
   const qc = useQueryClient();
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [expandedJobberId, setExpandedJobberId] = useState<string | null>(null);
@@ -266,25 +268,35 @@ export default function SettingsPage() {
     qc.invalidateQueries({ queryKey: qk.sites });
   }
 
-  async function handleDeleteJobber(jobberId: string) {
-    if (!window.confirm('Delete this jobber?')) return;
-    await del(`/jobbers/${jobberId}`);
-    setJobbers((prev) => prev.filter((j) => j.id !== jobberId));
-    if (settings?.jobberId === jobberId) {
+  async function handleDeleteJobber(jobber: Jobber) {
+    setConfirmJobber(jobber);
+  }
+
+  async function handleDeleteJobberConfirmed() {
+    if (!confirmJobber) return;
+    await del(`/jobbers/${confirmJobber.id}`);
+    setJobbers((prev) => prev.filter((j) => j.id !== confirmJobber.id));
+    if (settings?.jobberId === confirmJobber.id) {
       await saveNow({ jobberId: undefined, jobberContactName: undefined, jobberPhone: undefined, jobberEmail: undefined });
     }
+    setConfirmJobber(null);
     qc.invalidateQueries({ queryKey: qk.settings });
     qc.invalidateQueries({ queryKey: qk.jobbers });
     qc.invalidateQueries({ queryKey: qk.sites });
   }
 
-  async function handleDeleteService(companyId: string) {
-    if (!window.confirm('Delete this service company?')) return;
-    await del(`/sites/${selectedSiteId}/service-companies/${companyId}`);
-    setServiceCompanies((prev) => prev.filter((c) => c.id !== companyId));
-    if (settings?.serviceCompanyId === companyId) {
+  async function handleDeleteService(company: ServiceCompany) {
+    setConfirmService(company);
+  }
+
+  async function handleDeleteServiceConfirmed() {
+    if (!confirmService) return;
+    await del(`/sites/${selectedSiteId}/service-companies/${confirmService.id}`);
+    setServiceCompanies((prev) => prev.filter((c) => c.id !== confirmService.id));
+    if (settings?.serviceCompanyId === confirmService.id) {
       await saveNow({ serviceCompanyId: undefined, serviceContactName: undefined, servicePhone: undefined, serviceEmail: undefined, serviceNotes: undefined });
     }
+    setConfirmService(null);
     qc.invalidateQueries({ queryKey: qk.settings });
     qc.invalidateQueries({ queryKey: qk.sites });
   }
@@ -938,7 +950,7 @@ export default function SettingsPage() {
                         <button className="button ghost" type="button" onClick={() => setExpandedJobberId(expandedJobberId === j.id ? null : j.id)}>
                           {expandedJobberId === j.id ? 'Hide' : 'Edit'}
                         </button>
-                        <button className="button ghost" type="button" onClick={() => handleDeleteJobber(j.id)}>
+                        <button className="button ghost" type="button" onClick={() => handleDeleteJobber(j)}>
                           Delete
                         </button>
                       </div>
@@ -1102,7 +1114,7 @@ export default function SettingsPage() {
                         <button className="button ghost" type="button" onClick={() => setExpandedServiceId(expandedServiceId === s.id ? null : s.id)}>
                           {expandedServiceId === s.id ? 'Hide' : 'Edit'}
                         </button>
-                        <button className="button ghost" type="button" onClick={() => handleDeleteService(s.id)}>
+                        <button className="button ghost" type="button" onClick={() => handleDeleteService(s)}>
                           Delete
                         </button>
                       </div>
@@ -1446,6 +1458,24 @@ export default function SettingsPage() {
         cancelLabel="Keep"
         onConfirm={handleDeleteContactConfirmed}
         onCancel={() => setConfirmDelete(null)}
+      />
+      <ConfirmModal
+        open={!!confirmJobber}
+        title="Delete jobber"
+        message={`Remove ${confirmJobber?.name || 'this jobber'}? This will clear it as the primary for this site.`}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        onConfirm={handleDeleteJobberConfirmed}
+        onCancel={() => setConfirmJobber(null)}
+      />
+      <ConfirmModal
+        open={!!confirmService}
+        title="Delete service company"
+        message={`Remove ${confirmService?.name || 'this service company'}? This will clear it as the primary for this site.`}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        onConfirm={handleDeleteServiceConfirmed}
+        onCancel={() => setConfirmService(null)}
       />
     </div>
   );

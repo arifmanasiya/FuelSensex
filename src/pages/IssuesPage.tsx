@@ -34,7 +34,7 @@ export default function IssuesPage() {
       setServiceCompanies([]);
       return;
     }
-    get<ServiceCompany[]>(`/sites/${selectedSiteId}/service-companies`).then(setServiceCompanies);
+    get<ServiceCompany[]>(`/api/sites/${selectedSiteId}/service-companies`).then(setServiceCompanies);
   }, [selectedSiteId]);
 
   const filtered = useMemo(() => {

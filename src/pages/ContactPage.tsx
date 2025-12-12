@@ -36,7 +36,7 @@ export default function ContactPage() {
             <div style={{ marginTop: '0.5rem' }}>
               <a
                 className="button ghost"
-                href="https://docs.google.com/forms/d/e/1FAIpQLSeOPX0KhXKh5SC-gtiGF1jRyO_3oN_bLUerx5BxiVVlenbHIQ/viewform?usp=header"
+                href="https://forms.gle/D3x9MPPv3HmNvnCh9"
                 target="_blank"
                 rel="noreferrer"
               >

@@ -90,7 +90,7 @@ const companyLinks: NavItem[] = [
   { to: '/faq', label: 'FAQ', icon: 'help' },
   { to: '/contact', label: 'Contact Us', icon: 'mail' },
   {
-    href: 'https://docs.google.com/forms/d/e/1FAIpQLSeOPX0KhXKh5SC-gtiGF1jRyO_3oN_bLUerx5BxiVVlenbHIQ/viewform?usp=header',
+    href: 'https://forms.gle/D3x9MPPv3HmNvnCh9',
     label: 'Feedback',
     icon: 'chat',
   },

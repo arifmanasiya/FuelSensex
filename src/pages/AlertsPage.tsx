@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { get } from '../api/apiClient';
 import type { Alert, ServiceCompany, SiteSummary } from '../types';
+import type { Ticket } from '../models/types';
 import AlertBadge from '../components/AlertBadge';
 import PageHeader from '../components/PageHeader';
 import { pageHeaderConfig } from '../config/pageHeaders';
@@ -115,6 +116,14 @@ export default function AlertsPage() {
                             const partner = svc[0];
                             if (!partner) {
                               navigate('/issues', { state: { siteId: a.siteId, openModal: true, partnerType: 'SERVICE' } });
+                              return;
+                            }
+                            const existing = await get<Ticket[]>(`/api/tickets?siteId=${a.siteId}`);
+                            const active = existing.find(
+                              (t) => t.serviceCompanyId === partner.id && t.status !== 'RESOLVED',
+                            );
+                            if (active) {
+                              navigate('/issues', { state: { siteId: a.siteId } });
                               return;
                             }
                             await createTicket.mutateAsync({

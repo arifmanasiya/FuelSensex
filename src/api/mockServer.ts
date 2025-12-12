@@ -846,8 +846,8 @@ function computeBlendedGallons(regGallons: number, premGallons: number): number 
 }
 
 function withComputedSummary(site: SiteSummary): SiteSummary {
-  const siteAlerts = alerts.filter((a) => a.siteId === site.id);
-  const openCount = siteAlerts.filter((a) => a.isOpen).length;
+  const live = deriveLiveStatus(site.id);
+  const openCount = live.alerts.filter((a) => a.isOpen).length;
   return { ...site, lowestTankPercent: computeLowestTankPercent(site.id), openAlertCount: openCount };
 }
 
@@ -1728,10 +1728,15 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
   }
 
   if (method === 'GET' && path === '/alerts') {
-    // derive from live status for first site for backward compatibility
-    const firstSite = sites[0];
-    const derived = firstSite ? deriveLiveStatus(firstSite.id).alerts : [];
-    return delay(derived as unknown as T);
+    ensureAtgSeeded();
+    const url = new URL(`http://dummy${path}`);
+    const siteId = url.searchParams.get('siteId') || undefined;
+    if (siteId) {
+      const derived = deriveLiveStatus(siteId).alerts;
+      return delay(derived as unknown as T);
+    }
+    const all = buildCanonicalSites().flatMap((s) => deriveLiveStatus(s.id).alerts);
+    return delay(all as unknown as T);
   }
 
   throw new Error(`Mock route not implemented: ${method} ${path}`);

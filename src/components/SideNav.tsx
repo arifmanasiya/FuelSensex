@@ -77,6 +77,7 @@ const icons = {
 
 const productLinks: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: 'dashboard' },
+  { to: '/alerts', label: 'Alerts', icon: 'settings' },
   { to: '/orders', label: 'Orders', icon: 'settings' },
   { to: '/orders/new', label: 'Create Order', icon: 'settings' },
   { to: '/deliveries', label: 'Deliveries', icon: 'settings' },

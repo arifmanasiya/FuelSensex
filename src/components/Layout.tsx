@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TopNav from './TopNav';
 import SideNav from './SideNav';
-import FeedbackBanner from './FeedbackBanner';
 import { useState } from 'react';
 
 interface Props {
@@ -27,7 +26,6 @@ export default function Layout({ children }: Props) {
       <div className="main-shell">
         <TopNav onMenuToggle={() => setMobileNavOpen((prev) => !prev)} />
         <main className="content">
-          <FeedbackBanner />
           {children}
         </main>
         <footer className="footer">

@@ -17,8 +17,229 @@
   User,
   UserProfile,
 } from '../types';
+import type {
+  Site as CanonSite,
+  Tank as CanonTank,
+  Order as CanonOrder,
+  Jobber as CanonJobber,
+  SiteSettings as CanonSiteSettings,
+  Ticket as CanonTicket,
+} from '../models/types';
 
-type HttpMethod = 'GET' | 'POST' | 'PUT';
+const PRODUCT_MAP: Record<string, CanonTank['productType']> = {
+  REG: 'REGULAR',
+  PREM: 'PREMIUM',
+  DSL: 'DIESEL',
+  MID: 'VIRTUAL_MIDGRADE',
+};
+
+function mapTankToCanon(t: Tank): CanonTank {
+  const productType = PRODUCT_MAP[t.gradeCode] ?? 'REGULAR';
+  return {
+    id: t.id,
+    siteId: t.siteId,
+    name: t.name,
+    productType,
+    capacityGallons: t.capacityGallons,
+    currentVolumeGallons: t.currentGallons,
+    targetFillGallons: undefined,
+    temperatureF: t.temperatureC ? t.temperatureC * 9 / 5 + 32 : undefined,
+    waterLevel: t.waterLevelInches,
+    statusFlags: t.status === 'CRITICAL' ? ['ALARM_ACTIVE'] : t.status === 'LOW' ? ['IN_TEST'] : [],
+    isVirtual: productType === 'VIRTUAL_MIDGRADE',
+  };
+}
+
+function mapMidTankToCanon(virtual: Tank | null, reg: Tank | undefined, prem: Tank | undefined): CanonTank | null {
+  if (!virtual) return null;
+  const base = mapTankToCanon(virtual);
+  if (!reg || !prem) return base;
+  return {
+    ...base,
+    isVirtual: true,
+    blendSources: [
+      { tankId: reg.id, ratio: 0.4 },
+      { tankId: prem.id, ratio: 0.6 },
+    ],
+    computedVolumeGallons: base.currentVolumeGallons,
+  };
+}
+
+function buildCanonicalTanks(siteId: string): CanonTank[] {
+  const siteSetting = settings.find((st) => st.siteId === siteId);
+  const siteTanks = tanks
+    .filter((t) => t.siteId === siteId && t.gradeCode !== 'MID')
+    .map((t) => {
+      const canon = mapTankToCanon(t);
+      const override = tankOverrides[t.id];
+      const capacityGallons = override?.capacityGallons ?? canon.capacityGallons;
+      const targetFillGallons = override?.targetFillGallons;
+      const baseThresholds = {
+        lowPercent: siteSetting?.lowTankPercent,
+        criticalPercent: siteSetting?.criticalTankPercent,
+      };
+      return {
+        ...canon,
+        capacityGallons,
+        targetFillGallons,
+        alertThresholds: {
+          ...baseThresholds,
+          ...override?.alertThresholds,
+        },
+      };
+    });
+  const reg = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'REG');
+  const prem = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'PREM');
+  const mid = deriveMidTank(siteId);
+  const virtual = mapMidTankToCanon(mid, reg, prem);
+  return virtual ? [...siteTanks, virtual] : siteTanks;
+}
+
+function buildCanonicalSettings(siteId: string): CanonSiteSettings {
+  const s = settings.find((st) => st.siteId === siteId);
+  const siteJobbers: CanonJobber[] = jobbers.map((j) => ({
+    id: j.id,
+    name: j.name,
+    contact: { name: j.contactName ?? j.name, phone: j.phone, email: j.email },
+    communication: { preferredChannel: 'EMAIL', notes: '' },
+    system: { externalId: j.id, integrationType: 'MANUAL' },
+  }));
+  const contacts = managerContacts.filter((c) => c.siteId === siteId);
+  return {
+    siteId,
+    jobberId: s?.jobberId,
+    jobbers: siteJobbers,
+    backOffice: {
+      systemName: s?.backOfficeProvider ?? 'BackOffice',
+      syncScheduleCron: '0 */4 * * *',
+      lastSyncAt: new Date().toISOString(),
+      status: 'OK',
+    },
+    notifications: {
+      contacts: contacts.map((c) => ({ name: c.name, role: c.role, phone: c.phone, email: c.email })),
+      modes: { email: !!s?.notifyByEmail, sms: !!s?.notifyBySms, inApp: true },
+      frequency: 'IMMEDIATE',
+    },
+    alertsEnabled: s?.alertsEnabled ?? true,
+    defaultLoadRegGallons: s?.defaultLoadRegGallons,
+    defaultLoadPremGallons: s?.defaultLoadPremGallons,
+    defaultLoadDslGallons: s?.defaultLoadDslGallons,
+    defaultLoadMidGallons: s?.defaultLoadMidGallons,
+  };
+}
+
+function buildCanonicalSites(): CanonSite[] {
+  return sites.map((site) => ({
+    id: site.id,
+    code: site.id,
+    name: site.name,
+    address: `${site.address} - ${site.city}`,
+    timeZone: 'America/Chicago',
+    status: site.status as CanonSite['status'],
+    tanks: buildCanonicalTanks(site.id),
+    settings: buildCanonicalSettings(site.id),
+  }));
+}
+
+function mapOrderStatus(status: FuelOrder['status']): CanonOrder['status'] {
+  if (status === 'REQUESTED') return 'PENDING';
+  if (status === 'EN_ROUTE') return 'DISPATCHED';
+  return status as CanonOrder['status'];
+}
+
+function getGradeCodeForTank(tankId: string, siteId: string): string {
+  const tank = tanks.find((t) => t.id === tankId && t.siteId === siteId);
+  return tank?.gradeCode ?? 'REG';
+}
+
+function applyOrderStatus(order: CanonOrder, status: CanonOrder['status'], poNumber?: string) {
+  if (status === 'CONFIRMED' && !order.jobberPoNumber) {
+    order.jobberPoNumber = poNumber || `PO-${Date.now()}`;
+  }
+  if (status === 'DELIVERED') {
+    generateDeliveriesForOrder(order);
+    return order;
+  }
+  order.status = status;
+  order.updatedAt = new Date().toISOString();
+  return order;
+}
+
+function generateDeliveriesForOrder(order: CanonOrder) {
+  // remove existing deliveries for this orderNumber
+  if (order.orderNumber) {
+    deliveries = deliveries.filter((d) => d.orderNumber !== order.orderNumber);
+  }
+  if (!order.lines || !order.lines.length) return;
+  order.lines.forEach((line) => {
+    const gradeCode = getGradeCodeForTank(line.tankId, order.siteId);
+    const supplierName = jobbers.find((j) => j.id === order.jobberId)?.name || 'Jobber';
+    const varianceFactor = 1 + (Math.random() * 0.06 - 0.03); // +/-3%
+    const delivered = Math.max(0, Math.round(line.quantityGallonsRequested * varianceFactor));
+    const status =
+      delivered < line.quantityGallonsRequested * 0.99
+        ? 'SHORT'
+        : delivered > line.quantityGallonsRequested * 1.01
+        ? 'OVER'
+        : 'OK';
+    deliveries.unshift({
+      id: `del-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+      siteId: order.siteId,
+      timestamp: new Date().toISOString(),
+      supplier: supplierName,
+      gradeCode,
+      bolGallons: line.quantityGallonsRequested,
+      atgReceivedGallons: delivered,
+      status,
+      orderNumber: order.orderNumber,
+    });
+    line.quantityGallonsDelivered = delivered;
+  });
+    const totalDelivered = order.lines.reduce((sum, l) => sum + (l.quantityGallonsDelivered ?? 0), 0);
+    order.quantityGallonsDelivered = totalDelivered;
+    const short = totalDelivered < order.quantityGallonsRequested * 0.99;
+    const over = totalDelivered > order.quantityGallonsRequested * 1.01;
+    order.status = over ? 'DELIVERED_OVER' : short ? 'DELIVERED_SHORT' : 'DELIVERED';
+    order.updatedAt = new Date().toISOString();
+  }
+
+function buildCanonicalOrders(): CanonOrder[] {
+  return fuelOrders.map((o) => {
+    const lines = o.lines.map((line) => {
+      const siteTanks = tanks.filter((t) => t.siteId === o.siteId && t.gradeCode === line.gradeCode);
+      const tankId = siteTanks[0]?.id ?? line.gradeCode;
+      return { tankId, quantityGallonsRequested: line.requestedGallons };
+    });
+    const firstTank = lines[0]?.tankId;
+    return {
+      id: o.id,
+      orderNumber: o.id,
+      siteId: o.siteId,
+      tankId: firstTank,
+      jobberId: o.supplierId,
+      status: mapOrderStatus(o.status),
+      quantityGallonsRequested: lines.reduce((sum, l) => sum + l.quantityGallonsRequested, 0),
+      createdAt: o.createdAt,
+      updatedAt: o.createdAt,
+      ruleTriggered: false,
+      jobberPoNumber: o.lines.length ? `PO-${o.id}` : undefined,
+      lines,
+    };
+  });
+}
+
+let canonicalOrders: CanonOrder[] = [];
+let canonicalTickets: CanonTicket[] = [];
+let tankOverrides: Record<
+  string,
+  {
+    capacityGallons?: number;
+    targetFillGallons?: number;
+    alertThresholds?: { lowPercent?: number; criticalPercent?: number };
+  }
+> = {};
+
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 let mockUser: User = {
   id: 'user-1',
@@ -263,7 +484,8 @@ let deliveries: DeliveryRecord[] = [
     gradeCode: 'REG',
     bolGallons: 6800,
     atgReceivedGallons: 6650,
-    status: 'CHECK',
+    status: 'OVER',
+    orderNumber: 'ORD-seed-101',
   },
   {
     id: 'del-2',
@@ -274,6 +496,7 @@ let deliveries: DeliveryRecord[] = [
     bolGallons: 7200,
     atgReceivedGallons: 7200,
     status: 'OK',
+    orderNumber: 'ORD-seed-101',
   },
   {
     id: 'del-3',
@@ -284,6 +507,7 @@ let deliveries: DeliveryRecord[] = [
     bolGallons: 5000,
     atgReceivedGallons: 4885,
     status: 'SHORT',
+    orderNumber: 'ORD-seed-202',
   },
   {
     id: 'del-4',
@@ -294,6 +518,7 @@ let deliveries: DeliveryRecord[] = [
     bolGallons: 6000,
     atgReceivedGallons: 5980,
     status: 'OK',
+    orderNumber: 'ORD-seed-202',
   },
   {
     id: 'del-4b',
@@ -303,7 +528,8 @@ let deliveries: DeliveryRecord[] = [
     gradeCode: 'PREM',
     bolGallons: 4500,
     atgReceivedGallons: 4420,
-    status: 'CHECK',
+    status: 'OVER',
+    orderNumber: 'ORD-seed-202',
   },
   {
     id: 'del-4c',
@@ -314,6 +540,7 @@ let deliveries: DeliveryRecord[] = [
     bolGallons: 3800,
     atgReceivedGallons: 3700,
     status: 'OK',
+    orderNumber: 'ORD-seed-202',
   },
   {
     id: 'del-5',
@@ -323,7 +550,8 @@ let deliveries: DeliveryRecord[] = [
     gradeCode: 'REG',
     bolGallons: 6500,
     atgReceivedGallons: 6320,
-    status: 'CHECK',
+    status: 'SHORT',
+    orderNumber: 'ORD-seed-303',
   },
   {
     id: 'del-6',
@@ -343,7 +571,7 @@ let deliveries: DeliveryRecord[] = [
     gradeCode: 'DSL',
     bolGallons: 5200,
     atgReceivedGallons: 5000,
-    status: 'CHECK',
+    status: 'SHORT',
   },
   {
     id: 'del-8',
@@ -353,7 +581,7 @@ let deliveries: DeliveryRecord[] = [
     gradeCode: 'MID',
     bolGallons: 3600,
     atgReceivedGallons: 3500,
-    status: 'CHECK',
+    status: 'SHORT',
   },
 ];
 
@@ -496,6 +724,7 @@ let settings: SiteSettings[] = [
     lowTankPercent: 20,
     criticalTankPercent: 10,
     dailyVarianceAlertGallons: 60,
+    alertsEnabled: true,
     notifyByEmail: true,
     notifyBySms: true,
     preferredComm: 'EMAIL',
@@ -513,12 +742,20 @@ let settings: SiteSettings[] = [
     backOfficeProvider: 'MODISOFT',
     backOfficeUsername: 'quickstop-owner',
     backOfficePassword: 'password123',
+    defaultLoadRegGallons: 8000,
+    defaultLoadPremGallons: 4500,
+    defaultLoadDslGallons: 6000,
+    defaultLoadMidGallons: 5000,
+    capacityNotes: 'Reg 12k, Prem 8k, Diesel 10k',
+    tankTypePolicy: 'ALLOW_VIRTUAL',
+    virtualBlendRatio: '60/40 (Prem/Reg)',
   },
   {
     siteId: 'site-202',
     lowTankPercent: 18,
     criticalTankPercent: 8,
     dailyVarianceAlertGallons: 50,
+    alertsEnabled: true,
     notifyByEmail: true,
     notifyBySms: false,
     preferredComm: 'SMS',
@@ -536,12 +773,20 @@ let settings: SiteSettings[] = [
     backOfficeProvider: 'C_STORE',
     backOfficeUsername: 'lakeside-admin',
     backOfficePassword: 'welcome!',
+    defaultLoadRegGallons: 7000,
+    defaultLoadPremGallons: 4500,
+    defaultLoadDslGallons: 5500,
+    defaultLoadMidGallons: 5000,
+    capacityNotes: 'Virtual mid auto-calculated',
+    tankTypePolicy: 'ALLOW_VIRTUAL',
+    virtualBlendRatio: '60/40 (Prem/Reg)',
   },
   {
     siteId: 'site-303',
     lowTankPercent: 25,
     criticalTankPercent: 12,
     dailyVarianceAlertGallons: 75,
+    alertsEnabled: true,
     notifyByEmail: true,
     notifyBySms: true,
     preferredComm: 'CALL',
@@ -559,6 +804,13 @@ let settings: SiteSettings[] = [
     backOfficeProvider: 'MODISOFT',
     backOfficeUsername: 'ridgeview-manager',
     backOfficePassword: 'fuel-safe-303',
+    defaultLoadRegGallons: 7500,
+    defaultLoadPremGallons: 4200,
+    defaultLoadDslGallons: 6000,
+    defaultLoadMidGallons: 4800,
+    capacityNotes: 'Prem 8k, Diesel 9k',
+    tankTypePolicy: 'ALLOW_VIRTUAL',
+    virtualBlendRatio: '60/40 (Prem/Reg)',
   },
 ];
 
@@ -674,16 +926,62 @@ function computeRunoutForSite(siteId: string): RunoutPrediction[] {
 }
 
 let serviceCompanies: ServiceCompany[] = [
-  { id: 'svc-1', siteId: 'site-101', name: 'BlueTech Services', contactName: 'Ana Patel', phone: '+1 (555) 200-1111', email: 'dispatch@bluetech.com', notes: '24/7 dispatch' },
-  { id: 'svc-2', siteId: 'site-202', name: 'PumpCare Pros', contactName: 'Luis Gomez', phone: '+1 (555) 333-4444', email: 'support@pumpcare.com', notes: 'Prefers morning visits' },
-  { id: 'svc-3', siteId: 'site-303', name: 'FuelSafe Technicians', contactName: 'Kayla Chen', phone: '+1 (555) 888-9999', email: 'service@fuelsafe.io', notes: 'Water remediation specialists' },
+  {
+    id: 'svc-1',
+    siteId: 'site-101',
+    name: 'BlueTech Services',
+    contactName: 'Ana Patel',
+    phone: '+1 (555) 200-1111',
+    email: 'dispatch@bluetech.com',
+    notes: '24/7 dispatch',
+    portal: { url: 'https://portal.bluetech.com', username: 'bluetech-user', password: 'pass123' },
+    communication: { preferredChannel: 'PORTAL' },
+  },
+  {
+    id: 'svc-2',
+    siteId: 'site-202',
+    name: 'PumpCare Pros',
+    contactName: 'Luis Gomez',
+    phone: '+1 (555) 333-4444',
+    email: 'support@pumpcare.com',
+    notes: 'Prefers morning visits',
+    portal: { url: 'https://portal.pumpcare.com', username: 'pump-user', password: 'welcome123' },
+    communication: { preferredChannel: 'CALL' },
+  },
+  {
+    id: 'svc-3',
+    siteId: 'site-303',
+    name: 'FuelSafe Technicians',
+    contactName: 'Kayla Chen',
+    phone: '+1 (555) 888-9999',
+    email: 'service@fuelsafe.io',
+    notes: 'Water remediation specialists',
+    portal: { url: 'https://portal.fuelsafe.io', username: 'fuelsafe-user', password: 'fs-safe' },
+    communication: { preferredChannel: 'EMAIL' },
+  },
 ];
 
 let serviceTickets: ServiceTicket[] = [];
 
 let jobbers: Jobber[] = [
-  { id: 'job-1', name: 'Marathon Jobber', contactName: 'T. Reeves', phone: '+1 (555) 201-0101', email: 'orders@marathonjobber.com' },
-  { id: 'job-2', name: 'Shell Jobber', contactName: 'L. Parker', phone: '+1 (555) 202-0202', email: 'dispatch@shelljobber.com' },
+  {
+    id: 'job-1',
+    name: 'Marathon Jobber',
+    contactName: 'T. Reeves',
+    phone: '+1 (555) 201-0101',
+    email: 'orders@marathonjobber.com',
+    portal: { url: 'https://portal.marathonjobber.com', username: 'marathon-user', password: 'pass123' },
+    communication: { preferredChannel: 'PORTAL' },
+  },
+  {
+    id: 'job-2',
+    name: 'Shell Jobber',
+    contactName: 'L. Parker',
+    phone: '+1 (555) 202-0202',
+    email: 'dispatch@shelljobber.com',
+    portal: { url: 'https://portal.shelljobber.com', username: 'shell-user', password: 'welcome123' },
+    communication: { preferredChannel: 'CALL' },
+  },
 ];
 
 let managerContacts: ManagerContact[] = [
@@ -727,6 +1025,8 @@ let fuelOrders: FuelOrder[] = [
   },
 ];
 
+canonicalOrders = buildCanonicalOrders();
+
 function buildOrderSuggestion(siteId: string): OrderSuggestion {
   const siteTanks = getPhysicalSiteTanks(siteId);
   const mid = deriveMidTank(siteId);
@@ -756,6 +1056,269 @@ function delay<T>(value: T, ms = 200 + Math.random() * 300): Promise<T> {
 }
 
 export async function mockRequest<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+  if (path.startsWith('/api/')) {
+    // Canonical API surface
+    if (method === 'GET' && path === '/api/sites') {
+      return delay(buildCanonicalSites() as unknown as T);
+    }
+    const siteMatchApi = path.match(/^\/api\/sites\/([^/]+)(.*)$/);
+    if (siteMatchApi) {
+      const siteId = siteMatchApi[1];
+      const subPath = siteMatchApi[2] || '';
+      if (method === 'GET' && (subPath === '' || subPath === '/')) {
+        const site = buildCanonicalSites().find((s) => s.id === siteId);
+        if (!site) throw new Error('Site not found');
+        return delay(site as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/variance') {
+        const siteEvents = varianceEvents.filter((v) => v.siteId === siteId);
+        const recentEvents = siteEvents.filter(
+          (v) => Date.now() - new Date(v.timestamp).getTime() <= 1000 * 60 * 60 * 24 * 7
+        );
+        const todayEvents = recentEvents.filter(
+          (v) => new Date(v.timestamp).toDateString() === new Date().toDateString()
+        );
+        const todayGallons = todayEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
+        const todayValue = todayGallons * 3.5;
+        const last7DaysGallons = recentEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
+        const last7DaysValue = last7DaysGallons * 3.5;
+        return delay(
+          {
+            today: { gallons: todayGallons, value: todayValue },
+            last7Days: { gallons: last7DaysGallons, value: last7DaysValue },
+            events: siteEvents,
+          } as unknown as T
+        );
+      }
+      if (method === 'GET' && subPath === '/live-status') {
+        const site = buildCanonicalSites().find((s) => s.id === siteId);
+        if (!site) throw new Error('Site not found');
+        const runout = computeRunoutForSite(siteId);
+        const siteAlerts = alerts.filter((a) => a.siteId === siteId && a.isOpen);
+        return delay(
+          {
+            site,
+            tanks: buildCanonicalTanks(siteId),
+            runout,
+            alerts: siteAlerts,
+          } as unknown as T
+        );
+      }
+      if (method === 'GET' && subPath === '/tanks') {
+        return delay(buildCanonicalTanks(siteId) as unknown as T);
+      }
+      const tankMatchApi = subPath.match(/^\/tanks\/([^/]+)$/);
+        if (tankMatchApi && method === 'PUT') {
+          const tankId = tankMatchApi[1];
+          const partial = body as {
+            capacityGallons?: number;
+            targetFillGallons?: number;
+            alertThresholds?: { lowPercent?: number; criticalPercent?: number };
+          };
+          const baseTank = tanks.find((t) => t.id === tankId && t.siteId === siteId);
+          if (!baseTank) throw new Error('Tank not found');
+          if (!tankOverrides[tankId]) tankOverrides[tankId] = {};
+          if (typeof partial.capacityGallons === 'number') {
+            baseTank.capacityGallons = partial.capacityGallons;
+            tankOverrides[tankId].capacityGallons = partial.capacityGallons;
+          }
+          if (typeof partial.targetFillGallons === 'number') {
+            tankOverrides[tankId].targetFillGallons = partial.targetFillGallons;
+          }
+          if (partial.alertThresholds) {
+            tankOverrides[tankId].alertThresholds = {
+              ...tankOverrides[tankId].alertThresholds,
+              ...partial.alertThresholds,
+            };
+        }
+        const updated = buildCanonicalTanks(siteId).find((t) => t.id === tankId);
+        return delay(updated as unknown as T);
+      }
+      if (method === 'POST' && subPath === '/sync-backoffice') {
+        const provider = settings.find((s) => s.siteId === siteId)?.backOfficeProvider ?? 'MODISOFT';
+        const payload = {
+          siteId,
+          provider: provider as 'MODISOFT' | 'C_STORE',
+          status: 'SUCCESS' as const,
+          startedAt: new Date().toISOString(),
+          message: 'Back office sync completed (mock)',
+        };
+        return delay(payload as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/deliveries') {
+        const siteDeliveries = deliveries.filter((d) => d.siteId === siteId);
+        return delay(siteDeliveries as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/order-suggestions') {
+        const suggestion = buildOrderSuggestion(siteId);
+        return delay(suggestion as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/service-companies') {
+        const list = serviceCompanies.filter((c) => c.siteId === siteId);
+        return delay(list as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/service-tickets') {
+        const list = serviceTickets.filter((t) => t.siteId === siteId);
+        return delay(list as unknown as T);
+      }
+      if (method === 'POST' && subPath === '/service-tickets') {
+        const payload = body as Omit<ServiceTicket, 'id' | 'createdAt' | 'updatedAt' | 'status'>;
+        const ticket: ServiceTicket = {
+          ...payload,
+          siteId,
+          id: `svc-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          status: 'OPEN',
+        };
+        serviceTickets = [ticket, ...serviceTickets];
+        return delay(ticket as unknown as T);
+      }
+      const svcTicketMatchApi = subPath.match(/^\/service-tickets\/([^/]+)$/);
+      if (svcTicketMatchApi && method === 'PUT') {
+        const ticketId = svcTicketMatchApi[1];
+        const partial = body as Partial<ServiceTicket>;
+        const ticket = serviceTickets.find((t) => t.id === ticketId && t.siteId === siteId);
+        if (!ticket) throw new Error('Ticket not found');
+        Object.assign(ticket, partial, { updatedAt: new Date().toISOString() });
+        return delay(ticket as unknown as T);
+      }
+    }
+    if (method === 'GET' && path.startsWith('/api/orders')) {
+      const url = new URL(`http://dummy${path}`);
+      const siteId = url.searchParams.get('siteId') || undefined;
+      const list = siteId ? canonicalOrders.filter((o) => o.siteId === siteId) : canonicalOrders;
+      return delay(list as unknown as T);
+    }
+    const orderActionMatch = path.match(/^\/api\/orders\/([^/]+)\/(confirm|dispatch|deliver|cancel)$/);
+    if (orderActionMatch && method === 'POST') {
+      const orderId = orderActionMatch[1];
+      const action = orderActionMatch[2];
+      const po = (body as { jobberPoNumber?: string } | undefined)?.jobberPoNumber;
+      const order = canonicalOrders.find((o) => o.id === orderId);
+      if (!order) throw new Error('Order not found');
+      if (action === 'confirm') {
+        applyOrderStatus(order, 'CONFIRMED', po);
+      } else if (action === 'dispatch') {
+        applyOrderStatus(order, 'DISPATCHED');
+      } else if (action === 'deliver') {
+        applyOrderStatus(order, 'DELIVERED');
+      } else if (action === 'cancel') {
+        applyOrderStatus(order, 'CANCELLED');
+      }
+      return delay(order as unknown as T);
+    }
+    if (method === 'POST' && path === '/api/orders') {
+      const payload = body as { siteId: string; jobberId: string; lines: { tankId: string; quantityGallonsRequested: number }[] };
+      const now = Date.now();
+      const orderNumber = `ORD-${now}`;
+      const total = payload.lines.reduce((sum, l) => sum + l.quantityGallonsRequested, 0);
+      const newOrder: CanonOrder = {
+        id: orderNumber,
+        orderNumber,
+        siteId: payload.siteId,
+        tankId: payload.lines[0]?.tankId,
+        jobberId: payload.jobberId,
+        status: 'PENDING',
+        quantityGallonsRequested: total,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ruleTriggered: false,
+        jobberPoNumber: undefined,
+        lines: payload.lines,
+      };
+      canonicalOrders = [newOrder, ...canonicalOrders];
+      return delay(newOrder as unknown as T);
+    }
+    const orderMatchApi = path.match(/^\/api\/orders\/([^/]+)$/);
+    if (orderMatchApi && method === 'PUT') {
+      const orderId = orderMatchApi[1];
+      const partial = body as Partial<CanonOrder>;
+      const order = canonicalOrders.find((o) => o.id === orderId);
+      if (!order) throw new Error('Order not found');
+
+      // Handle status transitions and jobber PO number generation
+      if (partial.status === 'CONFIRMED' && !order.jobberPoNumber) {
+        order.jobberPoNumber = partial.jobberPoNumber || `PO-${Date.now()}`;
+      }
+      if (partial.status && ['DELIVERED', 'DELIVERED_SHORT', 'DELIVERED_OVER'].includes(partial.status)) {
+        generateDeliveriesForOrder(order);
+      } else {
+        Object.assign(order, partial);
+        order.updatedAt = new Date().toISOString();
+      }
+      return delay(order as unknown as T);
+    }
+  if (method === 'GET' && path === '/api/jobbers') {
+    const canonJobbers: CanonJobber[] = jobbers.map((j) => ({
+      id: j.id,
+      name: j.name,
+      contact: { name: j.contactName ?? j.name, phone: j.phone, email: j.email },
+      communication: { preferredChannel: j.communication?.preferredChannel ?? 'EMAIL', notes: j.communication?.notes ?? '' },
+      system: { externalId: j.id, integrationType: 'MANUAL' },
+    }));
+    return delay(canonJobbers as unknown as T);
+  }
+    if (method === 'GET' && path === '/api/settings') {
+      const payload: CanonSiteSettings[] = sites.map((s) => buildCanonicalSettings(s.id));
+      return delay(payload as unknown as T);
+    }
+    if (method === 'GET' && path === '/api/suppliers') {
+      return delay(suppliers as unknown as T);
+    }
+    if (method === 'GET' && path.startsWith('/api/tickets')) {
+      const url = new URL(`http://dummy${path}`);
+      const idMatch = path.match(/^\/api\/tickets\/([^/]+)$/);
+      if (idMatch) {
+        const ticket = canonicalTickets.find((t) => t.id === idMatch[1]);
+        if (!ticket) throw new Error('Ticket not found');
+        return delay(ticket as unknown as T);
+      }
+      const siteId = url.searchParams.get('siteId') || undefined;
+      const list = siteId ? canonicalTickets.filter((t) => t.siteId === siteId) : canonicalTickets;
+      return delay(list as unknown as T);
+    }
+    if (method === 'POST' && path === '/api/tickets') {
+      const payload = body as CanonTicket;
+      const ticket: CanonTicket = {
+        ...payload,
+        id: payload.id || `tkt-${Date.now()}`,
+        createdAt: payload.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: payload.status || 'OPEN',
+        comments: [],
+        orderNumber: (payload as any).orderNumber,
+      };
+      canonicalTickets = [ticket, ...canonicalTickets];
+      return delay(ticket as unknown as T);
+    }
+      const ticketMatchPut = path.match(/^\/api\/tickets\/([^/]+)$/);
+      if (ticketMatchPut && method === 'PUT') {
+        const ticketId = ticketMatchPut[1];
+        const partial = body as Partial<CanonTicket>;
+      const ticket = canonicalTickets.find((t) => t.id === ticketId);
+      if (!ticket) throw new Error('Ticket not found');
+      Object.assign(ticket, partial, { updatedAt: new Date().toISOString() });
+      return delay(ticket as unknown as T);
+    }
+    const ticketCommentMatch = path.match(/^\/api\/tickets\/([^/]+)\/comments$/);
+      if (ticketCommentMatch && method === 'POST') {
+        const ticketId = ticketCommentMatch[1];
+        const ticket = canonicalTickets.find((t) => t.id === ticketId);
+        if (!ticket) throw new Error('Ticket not found');
+        const payload = (body || {}) as { text: string; author?: string };
+        if (!ticket.comments) ticket.comments = [];
+        const comment = {
+          id: `cmt-${Date.now()}`,
+          author: payload.author || 'You',
+          text: payload.text,
+          createdAt: new Date().toISOString(),
+        };
+        ticket.comments.push(comment);
+        ticket.updatedAt = new Date().toISOString();
+        return delay(ticket as unknown as T);
+      }
+    throw new Error(`Mock route not implemented: ${method} ${path}`);
+  }
   if (method === 'POST' && path === '/auth/login') {
     return delay({
       user: mockUser,
@@ -789,6 +1352,23 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
     const jobber: Jobber = { ...payload, id: `job-${Date.now()}` };
     jobbers.push(jobber);
     return delay(jobber as unknown as T);
+  }
+  const jobberMatch = path.match(/^\/jobbers\/([^/]+)$/);
+  if (jobberMatch) {
+    const jobberId = jobberMatch[1];
+    if (method === 'PUT') {
+      const partial = body as Partial<Jobber>;
+      const jobber = jobbers.find((j) => j.id === jobberId);
+      if (!jobber) throw new Error('Jobber not found');
+      Object.assign(jobber, partial);
+      return delay(jobber as unknown as T);
+    }
+    if (method === 'DELETE') {
+      const idx = jobbers.findIndex((j) => j.id === jobberId);
+      if (idx === -1) throw new Error('Jobber not found');
+      const removed = jobbers.splice(idx, 1)[0];
+      return delay(removed as unknown as T);
+    }
   }
 
   if (method === 'GET' && path === '/sites') {
@@ -873,13 +1453,19 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
     }
 
     const contactMatch = subPath.match(/^\/contacts\/([^/]+)$/);
-    if (contactMatch && method === 'PUT') {
+    if (contactMatch && (method === 'PUT' || method === 'DELETE')) {
       const contactId = contactMatch[1];
-      const partial = body as Partial<ManagerContact>;
-      const contact = managerContacts.find((c) => c.id === contactId && c.siteId === siteId);
-      if (!contact) throw new Error('Contact not found');
-      Object.assign(contact, partial);
-      return delay(contact as unknown as T);
+      const contactIndex = managerContacts.findIndex((c) => c.id === contactId && c.siteId === siteId);
+      if (contactIndex === -1) throw new Error('Contact not found');
+      if (method === 'PUT') {
+        const partial = body as Partial<ManagerContact>;
+        Object.assign(managerContacts[contactIndex], partial);
+        return delay(managerContacts[contactIndex] as unknown as T);
+      }
+      if (method === 'DELETE') {
+        const removed = managerContacts.splice(contactIndex, 1)[0];
+        return delay(removed as unknown as T);
+      }
     }
 
     if (method === 'GET' && subPath === '/orders') {
@@ -936,6 +1522,23 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
       const company: ServiceCompany = { ...payload, id: `svc-${Date.now()}` };
       serviceCompanies.push(company);
       return delay(company as unknown as T);
+    }
+
+    const svcMatch = subPath.match(/^\/service-companies\/([^/]+)$/);
+    if (svcMatch && method === 'PUT') {
+      const svcId = svcMatch[1];
+      const company = serviceCompanies.find((c) => c.id === svcId && c.siteId === siteId);
+      if (!company) throw new Error('Service company not found');
+      Object.assign(company, body as Partial<ServiceCompany>);
+      return delay(company as unknown as T);
+    }
+
+    if (svcMatch && method === 'DELETE') {
+      const svcId = svcMatch[1];
+      const idx = serviceCompanies.findIndex((c) => c.id === svcId && c.siteId === siteId);
+      if (idx === -1) throw new Error('Service company not found');
+      const removed = serviceCompanies.splice(idx, 1)[0];
+      return delay(removed as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/service-tickets') {
@@ -1043,6 +1646,8 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
         jobberContactName: jobbers[0]?.contactName,
         jobberPhone: jobbers[0]?.phone,
         jobberEmail: jobbers[0]?.email,
+        jobberPortalUsername: '',
+        jobberPortalPassword: '',
         serviceCompanyId: serviceCompanies.find((c) => c.siteId === siteId)?.id ?? serviceCompanies[0]?.id,
         serviceContactName: serviceCompanies.find((c) => c.siteId === siteId)?.contactName,
         servicePhone: serviceCompanies.find((c) => c.siteId === siteId)?.phone,

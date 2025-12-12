@@ -77,6 +77,10 @@ const icons = {
 
 const productLinks: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: 'dashboard' },
+  { to: '/orders', label: 'Orders', icon: 'settings' },
+  { to: '/orders/new', label: 'Create Order', icon: 'settings' },
+  { to: '/deliveries', label: 'Deliveries', icon: 'settings' },
+  { to: '/issues', label: 'Issues', icon: 'settings' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -129,7 +133,7 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
               <NavLink
                 key={link.to}
                 to={link.to}
-                end={link.to === '/'}
+                end={link.to === '/' || link.to === '/orders' || link.to === '/deliveries'}
                 className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
                 onClick={onLinkClick}
               >

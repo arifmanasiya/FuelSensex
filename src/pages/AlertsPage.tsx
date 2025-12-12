@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { get } from '../api/apiClient';
 import type { Alert, SiteSummary } from '../types';
 import AlertBadge from '../components/AlertBadge';
+import PageHeader from '../components/PageHeader';
+import { pageHeaderConfig } from '../config/pageHeaders';
 
 function formatType(type: Alert['type']) {
   const map: Record<Alert['type'], string> = {
@@ -18,6 +20,7 @@ function formatType(type: Alert['type']) {
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [sites, setSites] = useState<SiteSummary[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('');
   const navigate = useNavigate();
   const [viewAlert, setViewAlert] = useState<Alert | null>(null);
   const [closeAlert, setCloseAlert] = useState<Alert | null>(null);
@@ -26,14 +29,28 @@ export default function AlertsPage() {
 
   useEffect(() => {
     get<Alert[]>('/alerts').then(setAlerts);
-    get<SiteSummary[]>('/sites').then(setSites);
+    get<SiteSummary[]>('/sites').then((data) => {
+      setSites(data);
+      if (data.length) setSelectedSiteId(data[0].id);
+    });
   }, []);
 
   const siteName = (id: string) => sites.find((s) => s.id === id)?.name || id;
+  const filteredAlerts = alerts.filter((a) => !selectedSiteId || a.siteId === selectedSiteId);
+  const header = pageHeaderConfig.alerts;
 
   return (
     <div className="page">
-      <h1 style={{ margin: 0 }}>Notifications</h1>
+      <PageHeader
+        title={header.title}
+        subtitle={header.subtitle}
+        infoTooltip={header.infoTooltip}
+        siteSelect={{
+          value: selectedSiteId,
+          onChange: setSelectedSiteId,
+          options: sites.map((s) => ({ id: s.id, label: s.name })),
+        }}
+      />
       <div className="card">
         <div className="card-header" style={{ justifyContent: 'flex-start', gap: '0.5rem' }}>
           <button
@@ -43,7 +60,7 @@ export default function AlertsPage() {
             type="button"
           >
             Open
-            <span className="count-badge">{alerts.filter((a) => a.isOpen).length}</span>
+            <span className="count-badge">{filteredAlerts.filter((a) => a.isOpen).length}</span>
           </button>
           <button
             className={alertTab === 'CLOSED' ? 'button' : 'button ghost'}
@@ -52,11 +69,11 @@ export default function AlertsPage() {
             type="button"
           >
             Closed
-            <span className="count-badge">{alerts.filter((a) => !a.isOpen).length}</span>
+            <span className="count-badge">{filteredAlerts.filter((a) => !a.isOpen).length}</span>
           </button>
         </div>
         <div className="alerts-grid">
-          {[...alerts]
+          {[...filteredAlerts]
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             .filter((a) => (alertTab === 'OPEN' ? a.isOpen : !a.isOpen))
             .map((a) => (

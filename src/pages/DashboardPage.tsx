@@ -1,42 +1,65 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { get } from '../api/apiClient';
-import type { SiteSummary } from '../types';
+import { useSites } from '../api/hooks';
+import type { Site } from '../models/types';
 import KpiCard from '../components/KpiCard';
+import PageHeader from '../components/PageHeader';
+import { pageHeaderConfig } from '../config/pageHeaders';
 
 export default function DashboardPage() {
-  const [sites, setSites] = useState<SiteSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { data: sites = [], isLoading } = useSites();
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('');
   const lossTrendGallons = useMemo(() => [60, 80, 50, 90, 110, 70, 100, 120], []);
   const [activeTrendIndex, setActiveTrendIndex] = useState(lossTrendGallons.length - 1);
   const activeGallons = lossTrendGallons[activeTrendIndex] ?? 0;
   const activeValue = activeGallons * 3.5;
 
-  useEffect(() => {
-    get<SiteSummary[]>('/sites')
-      .then(setSites)
-      .finally(() => setLoading(false));
-  }, []);
+  const filteredSites = useMemo(
+    () => (selectedSiteId ? sites.filter((s) => s.id === selectedSiteId) : sites),
+    [sites, selectedSiteId]
+  );
 
   const totals = useMemo(() => {
-    const totalAlerts = sites.reduce((sum, s) => sum + s.openAlertCount, 0);
-    const totalVarianceGallons = sites.reduce((sum, s) => sum + s.currentDailyVarianceGallons, 0);
-    const totalVarianceValue = sites.reduce((sum, s) => sum + s.currentDailyVarianceValue, 0);
-    return { totalAlerts, totalVarianceGallons, totalVarianceValue };
-  }, [sites]);
+    const totalSites = filteredSites.length;
+    const totalVolume = filteredSites.reduce((sum, s) => {
+      const physicalTanks = s.tanks.filter((t) => !t.isVirtual && t.productType !== 'VIRTUAL_MIDGRADE');
+      return sum + physicalTanks.reduce((tSum, t) => tSum + (t.currentVolumeGallons ?? 0), 0);
+    }, 0);
+    const openIssues = filteredSites.filter((s) => s.status !== 'HEALTHY').length;
+    const atRisk = filteredSites
+      .flatMap((s) =>
+        s.tanks
+          .filter((t) => !t.isVirtual && t.productType !== 'VIRTUAL_MIDGRADE')
+          .map((t) => ({ site: s, tank: t, percent: Math.round((t.currentVolumeGallons / t.capacityGallons) * 100) }))
+          .filter((x) => x.percent <= 20)
+      )
+      .slice(0, 4);
+    return { totalSites, totalVolume, openIssues, atRisk };
+  }, [filteredSites]);
+
+  const header = pageHeaderConfig.dashboard;
 
   return (
     <div className="page">
+      <PageHeader
+        title={header.title}
+        subtitle={header.subtitle}
+        infoTooltip={header.infoTooltip}
+        siteSelect={{
+          value: selectedSiteId,
+          onChange: setSelectedSiteId,
+          options: [{ id: '', label: 'All sites' }, ...sites.map((s) => ({ id: s.id, label: s.name }))],
+        }}
+      />
       <div className="hero hero-grid">
         <div>
           <div className="pill" style={{ background: 'rgba(255,255,255,0.08)', color: '#dbeafe' }}>
             FuelSense Watchtower
           </div>
-          <h1>Stop hidden fuel loss before it drains profit</h1>
+          <h1>Take control of every gallon: ordering, timing, and data in one place.</h1>
           <div style={{ opacity: 0.9, marginBottom: '1rem' }}>
-            We are seeing {totals.totalAlerts} open notifications across your {sites.length} stores. Estimated daily loss is{' '}
-            {Math.abs(totals.totalVarianceGallons).toLocaleString()} gal.
+            We're seeing {totals.openIssues} open issues across your {totals.totalSites} stores. Estimated daily exposure is 115 gallons.
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button className="button" onClick={() => navigate('/alerts')}>
@@ -45,6 +68,14 @@ export default function DashboardPage() {
             <button className="button ghost" onClick={() => navigate('/settings')}>
               Tune thresholds
             </button>
+            <a
+              className="button ghost"
+              href="https://docs.google.com/forms/d/e/1FAIpQLSeOPX0KhXKh5SC-gtiGF1jRyO_3oN_bLUerx5BxiVVlenbHIQ/viewform?usp=header"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Early Access / Feedback
+            </a>
           </div>
         </div>
         <div className="card gradient">
@@ -55,13 +86,13 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="kpi" style={{ gap: '0.5rem' }}>
-            <div className="label" style={{ color: '#0b1a2d' }}>Recoverable today</div>
+            <div className="label" style={{ color: '#0b1a2d' }}>Total volume (gal)</div>
             <div className="value" style={{ color: '#0b1a2d' }}>
-              {totals.totalVarianceValue.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+              {totals.totalVolume.toLocaleString()}
             </div>
-            <div className="label" style={{ color: '#0b1a2d' }}>Projected monthly savings</div>
+            <div className="label" style={{ color: '#0b1a2d' }}>Open issues</div>
             <div className="value" style={{ color: '#0b1a2d' }}>
-              {(totals.totalVarianceValue * 30).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+              {totals.openIssues}
             </div>
             <div className="label" style={{ color: '#0b1a2d' }}>Loss trend (last 8 days)</div>
             <div
@@ -76,7 +107,7 @@ export default function DashboardPage() {
               }}
             >
               <span>
-                Day {activeTrendIndex + 1} ·{' '}
+                Day {activeTrendIndex + 1} -{' '}
                 {new Date(Date.now() - (lossTrendGallons.length - activeTrendIndex - 1) * 24 * 60 * 60 * 1000).toLocaleDateString()}
               </span>
               <span>-{activeGallons} gal</span>
@@ -116,71 +147,68 @@ export default function DashboardPage() {
               })}
             </div>
             <div className="muted" style={{ color: '#0b1a2d' }}>
-              Trend: losses are spiking this week — act now to lock in savings.
+              Trend: losses are spiking this week - act now to lock in savings.
             </div>
           </div>
         </div>
       </div>
 
       <div className="kpi-grid">
-        <KpiCard label="Stores being watched" value={`${sites.length}`} />
-        <KpiCard label="Open notifications" value={`${totals.totalAlerts}`} />
-        <KpiCard
-          label="Fuel loss today"
-          value={`${totals.totalVarianceGallons.toLocaleString()} gal lost`}
-          subtext={totals.totalVarianceValue.toLocaleString('en-US', {
-            style: 'currency',
-            currency: 'USD',
-          })}
-        />
+        <KpiCard label="Stores being watched" value={`${totals.totalSites}`} />
+        <KpiCard label="Total volume on hand" value={`${totals.totalVolume.toLocaleString()} gal`} />
+        <KpiCard label="Open issues" value={`${totals.openIssues}`} />
       </div>
 
       <div className="site-grid">
-        {loading ? <div className="muted">Loading sites...</div> : null}
-        {sites.map((site) => (
-          <div key={site.id} className="card site-card" onClick={() => navigate(`/sites/${site.id}`)}>
-            <div className="card-header">
-              <div>
-                <div style={{ fontWeight: 700 }}>{site.name}</div>
-                <div className="muted">{site.city}</div>
+        {isLoading ? <div className="muted">Loading sites...</div> : null}
+        {sites.map((site: Site) => {
+          const lowestPercent =
+            site.tanks.filter((t) => !t.isVirtual && t.productType !== 'VIRTUAL_MIDGRADE').length > 0
+              ? Math.round(
+                  Math.min(
+                    ...site.tanks
+                      .filter((t) => !t.isVirtual && t.productType !== 'VIRTUAL_MIDGRADE')
+                      .map((t) => (t.currentVolumeGallons / t.capacityGallons) * 100)
+                  )
+                )
+              : 0;
+          const tankCount = site.tanks.filter((t) => !t.isVirtual && t.productType !== 'VIRTUAL_MIDGRADE').length;
+          return (
+            <div key={site.id} className="card site-card" onClick={() => navigate(`/sites/${site.id}`)}>
+              <div className="card-header">
+                <div>
+                  <div style={{ fontWeight: 700 }}>{site.name}</div>
+                  <div className="muted">{site.address}</div>
+                </div>
+                <StatusBadge status={site.status} />
               </div>
-              <StatusBadge status={site.status} />
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                <span
+                  className={
+                    site.status === 'CRITICAL' ? 'badge badge-red' : site.status === 'ATTENTION' ? 'badge badge-yellow' : 'badge badge-green'
+                  }
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Tanks: {tankCount}
+                </span>
+                <span
+                  className={
+                    lowestPercent <= 10 ? 'badge badge-red' : lowestPercent <= 20 ? 'badge badge-yellow' : 'badge badge-green'
+                  }
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Lowest tank: {lowestPercent}%
+                </span>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
-              <span
-                className={site.currentDailyVarianceGallons < 0 ? 'badge badge-red' : 'badge badge-green'}
-                style={{ fontSize: '0.85rem' }}
-              >
-                Loss today: {site.currentDailyVarianceGallons} gal ($
-                {site.currentDailyVarianceValue})
-              </span>
-              <span
-                className={site.openAlertCount > 0 ? 'badge badge-yellow' : 'badge badge-green'}
-                style={{ fontSize: '0.85rem' }}
-              >
-                Open notifications: {site.openAlertCount}
-              </span>
-              <span
-                className={
-                  site.lowestTankPercent <= 10
-                    ? 'badge badge-red'
-                    : site.lowestTankPercent <= 20
-                    ? 'badge badge-yellow'
-                    : 'badge badge-green'
-                }
-                style={{ fontSize: '0.85rem' }}
-              >
-                Lowest tank: {site.lowestTankPercent}%
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: SiteSummary['status'] }) {
+function StatusBadge({ status }: { status: Site['status'] }) {
   if (status === 'HEALTHY') return <span className="badge badge-green">Healthy</span>;
   if (status === 'ATTENTION') return <span className="badge badge-yellow">Attention</span>;
   return <span className="badge badge-red">Critical</span>;

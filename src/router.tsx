@@ -4,6 +4,11 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import SiteDetailPage from './pages/SiteDetailPage';
 import AlertsPage from './pages/AlertsPage';
+import OrdersListPage from './pages/OrdersListPage';
+import CreateOrderPage from './pages/CreateOrderPage';
+import DeliveriesPage from './pages/DeliveriesPage';
+import IssuesPage from './pages/IssuesPage';
+import IssueDetailPage from './pages/IssueDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
 import FAQPage from './pages/FAQPage';
@@ -21,6 +26,11 @@ export const router = createBrowserRouter(
       children: [
         { index: true, element: <DashboardPage /> },
         { path: 'sites/:siteId', element: <SiteDetailPage /> },
+        { path: 'orders', element: <OrdersListPage /> },
+        { path: 'orders/new', element: <CreateOrderPage /> },
+        { path: 'deliveries', element: <DeliveriesPage /> },
+        { path: 'issues', element: <IssuesPage /> },
+        { path: 'issues/:ticketId', element: <IssueDetailPage /> },
         { path: 'alerts', element: <AlertsPage /> },
         { path: 'settings', element: <SettingsPage /> },
         { path: 'about', element: <AboutPage /> },
@@ -30,6 +40,6 @@ export const router = createBrowserRouter(
     },
   ],
   {
-    basename: '/FuelSense',
+    basename: '/FuelSense/',
   }
 );

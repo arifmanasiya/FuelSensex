@@ -63,10 +63,16 @@ export interface DeliveryRecord {
   gradeCode: string;
   bolGallons: number;
   atgReceivedGallons: number;
-  status: 'OK' | 'SHORT' | 'CHECK';
+  status: 'OK' | 'SHORT' | 'OVER' | 'MISSING';
   preDeliveryGallons?: number;
   expectedReadingGallons?: number;
   issueNote?: string;
+  orderNumber?: string;
+}
+
+export interface JobberPortalCredentials {
+  username?: string;
+  password?: string;
 }
 
 export interface RunoutPrediction {
@@ -85,6 +91,8 @@ export interface ServiceCompany {
   phone?: string;
   email?: string;
   notes?: string;
+  portal?: { url?: string; username?: string; password?: string }; // url used as website
+  communication?: { preferredChannel?: 'EMAIL' | 'SMS' | 'CALL' | 'PORTAL'; notes?: string };
 }
 
 export interface ServiceTicket {
@@ -151,6 +159,7 @@ export interface SiteSettings {
   lowTankPercent: number;
   criticalTankPercent: number;
   dailyVarianceAlertGallons: number;
+  alertsEnabled?: boolean;
   notifyByEmail: boolean;
   notifyBySms: boolean;
   preferredComm?: 'EMAIL' | 'SMS' | 'CALL';
@@ -161,6 +170,8 @@ export interface SiteSettings {
   jobberContactName?: string;
   jobberPhone?: string;
   jobberEmail?: string;
+  jobberPortalUsername?: string;
+  jobberPortalPassword?: string;
   serviceCompanyId?: string;
   serviceContactName?: string;
   servicePhone?: string;
@@ -169,6 +180,13 @@ export interface SiteSettings {
   backOfficeProvider?: 'MODISOFT' | 'C_STORE';
   backOfficeUsername?: string;
   backOfficePassword?: string;
+  defaultLoadRegGallons?: number;
+  defaultLoadPremGallons?: number;
+  defaultLoadDslGallons?: number;
+  defaultLoadMidGallons?: number;
+  capacityNotes?: string;
+  tankTypePolicy?: 'PHYSICAL_ONLY' | 'ALLOW_VIRTUAL';
+  virtualBlendRatio?: string;
 }
 
 export interface BackOfficeSyncResult {
@@ -201,6 +219,8 @@ export interface Jobber {
   contactName?: string;
   phone?: string;
   email?: string;
+  portal?: { url?: string; username?: string; password?: string };
+  communication?: { preferredChannel?: 'EMAIL' | 'SMS' | 'CALL' | 'PORTAL'; notes?: string };
 }
 
 export interface ManagerContact {

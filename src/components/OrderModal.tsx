@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react';
-import type { DeliveryRecord, Tank } from '../types';
+import type { DeliveryRecord } from '../types';
+import type { UITank } from './TankCard';
 
 export interface OrderForm {
   supplier: string;
@@ -16,7 +17,7 @@ export interface OrderForm {
 }
 
 interface Props {
-  tank: Tank;
+  tank: UITank;
   form: OrderForm;
   isOpen: boolean;
   existingOrder?: DeliveryRecord;

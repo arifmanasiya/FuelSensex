@@ -1,8 +1,10 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 
 import { useParams } from 'react-router-dom';
 
 import { get, post, put } from '../api/apiClient';
+import { useCreateTicket, useLiveStatus, useOrders, useTickets, useSiteTanks } from '../api/hooks';
+import type { Ticket as CanonTicket, Order as CanonOrder } from '../models/types';
 
 import type {
   Alert,
@@ -10,24 +12,18 @@ import type {
   DeliveryRecord,
   FuelOrder,
   FuelOrderStatus,
-  OrderSuggestion,
-  RunoutPrediction,
+    RunoutPrediction,
   ServiceCompany,
   ServiceTicket,
-  SiteSummary,
-  Supplier,
-  Tank,
   VarianceEvent,
 } from '../types';
+import type { Site } from '../models/types';
+import type { UITank } from '../components/TankCard';
 
 import TankCard from '../components/TankCard';
 import Dropdown from '../components/Dropdown';
 import VarianceSummary from '../components/VarianceSummary';
 import AlertList from '../components/AlertList';
-
-import DeliveryTable from '../components/DeliveryTable';
-
-import OrderModal, { type OrderForm } from '../components/OrderModal';
 
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -41,15 +37,16 @@ interface VarianceResponse {
 
 
 
-const orderStatusFlow: FuelOrderStatus[] = ['REQUESTED', 'CONFIRMED', 'EN_ROUTE', 'DELIVERED'];
-
-
-
 export default function SiteDetailPage() {
   const { siteId } = useParams();
-  const [site, setSite] = useState<SiteSummary | null>(null);
+  const { data: canonTanks = [] } = useSiteTanks(siteId || '');
+  const { data: canonOrders = [] } = useOrders(siteId);
+  const { data: liveStatus } = useLiveStatus(siteId || '');
+  const { data: canonTickets = [] } = useTickets(siteId);
+  const createTicket = useCreateTicket();
+  const [site, setSite] = useState<Site | null>(null);
 
-  const [tanks, setTanks] = useState<Tank[]>([]);
+  const [tanks, setTanks] = useState<UITank[]>([]);
 
   const [variance, setVariance] = useState<VarianceResponse | null>(null);
 
@@ -61,62 +58,11 @@ export default function SiteDetailPage() {
 
   const [loading, setLoading] = useState(true);
 
-  const [orderTank, setOrderTank] = useState<Tank | null>(null);
-
-  const [orderForm, setOrderForm] = useState<OrderForm>({
-
-    supplier: 'Preferred Supplier',
-
-    gallons: 3000,
-
-    windowStartDate: new Date().toISOString().slice(0, 10),
-
-    windowEndDate: new Date().toISOString().slice(0, 10),
-
-    windowStartTime: '15:00',
-
-    windowEndTime: '18:00',
-
-    contactName: 'On-site Manager',
-
-    contactPhone: '(555) 123-4567',
-
-    poNumber: '',
-
-    notes: '',
-
-    priority: 'RUSH',
-
-  });
-
-  const supplierOptions = ['Preferred Supplier', 'Local Jobber', 'Major Brand', 'Independent'];
 
 
-
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-
-  const [orderSuggestion, setOrderSuggestion] = useState<OrderSuggestion | null>(null);
-
-  const [fuelOrders, setFuelOrders] = useState<FuelOrder[]>([]);
-
-  const [orderLoading, setOrderLoading] = useState(false);
-
-  const [orderMessage, setOrderMessage] = useState('');
-
-  const [orderLines, setOrderLines] = useState<{ gradeCode: string; gallons: number }[]>([]);
-
-  const [orderSupplierId, setOrderSupplierId] = useState('');
-
-  const [orderWindowStart, setOrderWindowStart] = useState(new Date().toISOString().slice(0, 16));
-
-  const [orderWindowEnd, setOrderWindowEnd] = useState(new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString().slice(0, 16));
-
-  const [orderNotes, setOrderNotes] = useState('');
-
-  const [backOfficeSyncing, setBackOfficeSyncing] = useState<string | null>(null);
   const [backOfficeMessage, setBackOfficeMessage] = useState('');
 
-  const [viewTab, setViewTab] = useState<'overview' | 'loss' | 'orders' | 'alerts' | 'service'>('overview');
+  const [viewTab, setViewTab] = useState<'overview' | 'loss' | 'alerts' | 'service'>('overview');
 
 
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; onConfirm: () => void }>({
@@ -146,96 +92,130 @@ export default function SiteDetailPage() {
     notes: string;
   }>({ open: false, issue: '', providerId: '', contactName: '', phone: '', notes: '' });
 
-  const orderingRef = useRef<HTMLDivElement | null>(null);
+  const [ticketForm, setTicketForm] = useState<{ type: CanonTicket['type']; description: string; orderId: string }>({
+    type: 'SHORT_DELIVERY',
+    description: '',
+    orderId: '',
+  });
+
+  const fuelOrders = useMemo<FuelOrder[]>(() => {
+    const statusMap: Record<CanonOrder['status'], FuelOrderStatus> = {
+      DRAFT: 'REQUESTED',
+      PENDING: 'REQUESTED',
+      CONFIRMED: 'CONFIRMED',
+      DISPATCHED: 'EN_ROUTE',
+      DELIVERED: 'DELIVERED',
+      DELIVERED_SHORT: 'DELIVERED',
+      DELIVERED_OVER: 'DELIVERED',
+      CANCELLED: 'CANCELLED',
+    };
+    return canonOrders.map((o) => {
+      const lines = (o.lines && o.lines.length
+        ? o.lines
+        : [{ tankId: o.tankId || 'unknown', quantityGallonsRequested: o.quantityGallonsRequested }]
+      ).map((line, idx) => {
+        const lineTank = canonTanks.find((t) => t.id === line.tankId);
+        const lineGrade =
+          lineTank?.productType === 'REGULAR'
+            ? 'REG'
+            : lineTank?.productType === 'PREMIUM'
+            ? 'PREM'
+            : lineTank?.productType === 'DIESEL'
+            ? 'DSL'
+            : 'MID';
+        return { id: `${o.id}-line-${idx}`, gradeCode: lineGrade, requestedGallons: line.quantityGallonsRequested };
+      });
+      return {
+        id: o.id,
+        siteId: o.siteId,
+        supplierId: o.jobberId,
+        status: statusMap[o.status] ?? 'REQUESTED',
+        createdAt: o.createdAt,
+        requestedDeliveryWindowStart: o.createdAt,
+        requestedDeliveryWindowEnd: o.updatedAt,
+        lines,
+        notes: '',
+      };
+    });
+  }, [canonOrders, canonTanks]);
 
 
 
   const todayGallons = variance?.today.gallons ?? 0;
-
   const todayValue = variance?.today.value ?? 0;
-
   const last7Gallons = variance?.last7Days.gallons ?? 0;
-
   const last7Value = variance?.last7Days.value ?? 0;
-
   const last30Gallons =
     variance?.events
       .filter((v) => Date.now() - new Date(v.timestamp).getTime() <= 30 * 24 * 60 * 60 * 1000)
       .reduce((sum, v) => sum + v.varianceGallons, 0) ?? 0;
 
-
+  useEffect(() => {
+    if (!canonTanks.length) return;
+    const mappedTanks: UITank[] = canonTanks.map((t) => ({
+      id: t.id,
+      siteId: t.siteId,
+      name: t.name,
+      productType: t.productType,
+      gradeCode:
+        t.productType === 'REGULAR'
+          ? 'REG'
+          : t.productType === 'PREMIUM'
+          ? 'PREM'
+          : t.productType === 'DIESEL'
+          ? 'DSL'
+          : 'MID',
+      capacityGallons: t.capacityGallons,
+      currentGallons: t.currentVolumeGallons,
+      waterLevelInches: t.waterLevel ?? 0,
+      temperatureC: t.temperatureF ? Math.round(((t.temperatureF - 32) * 5) / 9) : undefined,
+      status: t.statusFlags?.includes('ALARM_ACTIVE') ? 'CRITICAL' : 'OK',
+    }));
+    setTanks(mappedTanks);
+  }, [canonTanks]);
 
   useEffect(() => {
+    if (!liveStatus) return;
+    if (liveStatus.alerts?.length) {
+      setAlerts(liveStatus.alerts as Alert[]);
+    }
+    if (liveStatus.runout?.length) {
+      setRunout(liveStatus.runout as RunoutPrediction[]);
+    }
+  }, [liveStatus]);
+
+  useEffect(() => {
+    if (liveStatus?.site) {
+      setSite((prev) => prev ?? (liveStatus.site as unknown as Site));
+    }
+  }, [liveStatus]);
+
+
+
+useEffect(() => {
 
     if (!siteId) return;
 
     setLoading(true);
 
     Promise.all([
-      get<SiteSummary>(`/sites/${siteId}`),
-      get<Tank[]>(`/sites/${siteId}/tanks`),
-      get<VarianceResponse>(`/sites/${siteId}/variance`),
-      get<Alert[]>(`/sites/${siteId}/alerts`),
-      get<DeliveryRecord[]>(`/sites/${siteId}/deliveries`),
-      get<RunoutPrediction[]>(`/sites/${siteId}/runout`),
-      get<OrderSuggestion>(`/sites/${siteId}/order-suggestions`),
-      get<FuelOrder[]>(`/sites/${siteId}/orders`),
-      get<Supplier[]>('/suppliers'),
-      get<ServiceCompany[]>(`/sites/${siteId}/service-companies`),
-      get<ServiceTicket[]>(`/sites/${siteId}/service-tickets`),
+      get<VarianceResponse>(`/api/sites/${siteId}/variance`),
+      get<DeliveryRecord[]>(`/api/sites/${siteId}/deliveries`),
+      get<ServiceCompany[]>(`/api/sites/${siteId}/service-companies`),
+      get<ServiceTicket[]>(`/api/sites/${siteId}/service-tickets`),
     ])
 
       .then(
 
         ([
-          siteRes,
-          tankRes,
           varianceRes,
-          alertsRes,
           delivRes,
-          runoutRes,
-          suggestionRes,
-          ordersRes,
-          supplierRes,
           svcRes,
           ticketRes,
         ]) => {
-          setSite(siteRes);
-          setTanks(tankRes);
-
           setVariance(varianceRes);
 
-          const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
-
-          const normalizedAlerts = alertsRes
-
-            .map((a) => {
-
-              const ageMs = Date.now() - new Date(a.timestamp).getTime();
-
-              if (ageMs > sixtyDaysMs) {
-
-                return { ...a, isOpen: false };
-
-              }
-
-              return a;
-
-            })
-
-            .filter((a) => Date.now() - new Date(a.timestamp).getTime() <= sixtyDaysMs);
-
-          setAlerts(normalizedAlerts);
-
           setDeliveries(delivRes);
-
-          setRunout(runoutRes);
-
-          setOrderSuggestion(suggestionRes);
-
-          setFuelOrders(ordersRes);
-
-          setSuppliers(supplierRes);
 
           setServiceCompanies(svcRes);
 
@@ -248,40 +228,6 @@ export default function SiteDetailPage() {
       .finally(() => setLoading(false));
 
   }, [siteId]);
-
-
-
-  useEffect(() => {
-
-    if (orderSuggestion) {
-
-      setOrderLines(
-
-        orderSuggestion.suggestedLines.map((l) => ({
-
-          gradeCode: l.gradeCode,
-
-          gallons: Math.max(Math.round(l.suggestedOrderGallons / 10) * 10, 0),
-
-        }))
-
-      );
-
-    }
-
-  }, [orderSuggestion]);
-
-
-
-  useEffect(() => {
-
-    if (!orderSupplierId && suppliers.length) {
-
-      setOrderSupplierId(suppliers[0].id);
-
-    }
-
-  }, [suppliers, orderSupplierId]);
 
 
 
@@ -337,12 +283,13 @@ export default function SiteDetailPage() {
 
   const viewSelectValue = viewTab === 'service' ? 'overview' : viewTab;
   const openAlertCount = alerts.filter((a) => a.isOpen).length;
-
+  const isStillLoading = loading || (!site && !liveStatus?.site);
+  const physicalTanks = useMemo(() => tanks.filter((t) => t.gradeCode !== 'MID' && t.productType !== 'VIRTUAL_MIDGRADE'), [tanks]);
+  const lowestTankPercent =
+    physicalTanks.length > 0 ? Math.round(Math.min(...physicalTanks.map((t) => (t.currentGallons / t.capacityGallons) * 100))) : 0;
 
   if (!siteId) return <div>Missing site id</div>;
-
-  if (loading && !site) return <div className="muted">Loading site...</div>;
-
+  if (isStillLoading) return <div className="muted">Loading site...</div>;
   if (!site) return <div>Site not found</div>;
 
 
@@ -367,423 +314,19 @@ export default function SiteDetailPage() {
 
   }
 
-
-
-
-
-  function getActiveOrder(tank: Tank) {
-
-    return deliveries.find(
-
-      (d) =>
-
-        d.siteId === site!.id &&
-
-        d.gradeCode === tank.gradeCode &&
-
-        d.status === 'CHECK' &&
-
-        d.supplier.toLowerCase().includes('supplier')
-
-    );
-
-  }
-
-
-
-  function getRecommendedGallons(tank: Tank) {
-
-    const remaining = Math.max(tank.capacityGallons - tank.currentGallons, 0);
-
-    const targetFill = Math.max(tank.capacityGallons * 0.85 - tank.currentGallons, 0);
-
-    return Math.min(remaining, Math.max(Math.round(targetFill / 10) * 10, 0));
-
-  }
-
-
-
-  function openOrderModal(tank?: Tank) {
-
-    const target = tank ?? tanks[0];
-
-    if (!target) return;
-
-    setOrderTank(target);
-
-    const active = getActiveOrder(target);
-
-    if (active) {
-
-      setOrderForm({
-
-        ...orderForm,
-
-        supplier: active.supplier,
-
-        gallons: active.bolGallons,
-
-      });
-
-    } else {
-
-      setOrderForm({
-
-        ...orderForm,
-
-        supplier: supplierOptions[0],
-
-        gallons: getRecommendedGallons(target),
-
-      });
-
-    }
-
-  }
-
-
-
-  function submitOrder() {
-
-    if (!site || !orderTank) return;
-
-    const remaining = Math.max(orderTank.capacityGallons - orderTank.currentGallons, 0);
-
-    if (orderForm.gallons > remaining) {
-
-      window.alert(`Order exceeds tank capacity. Max you can order now is ${remaining.toLocaleString()} gallons.`);
-
-      return;
-
-    }
-
-    const existing = getActiveOrder(orderTank);
-
-    if (existing) {
-
-      setDeliveries((prev) =>
-
-        prev.map((d) =>
-
-          d.id === existing.id
-
-            ? { ...d, supplier: orderForm.supplier, bolGallons: orderForm.gallons, timestamp: new Date().toISOString() }
-
-            : d
-
-        )
-
-      );
-
-      setAlerts((prev) =>
-
-        prev.map((a) =>
-
-          a.message.includes('Fuel order placed') && a.siteId === site.id
-
-            ? {
-
-                ...a,
-
-                message: `Fuel order placed for ${orderTank.name} (mock) - ${orderForm.gallons} gal, ${orderForm.supplier}, ${orderForm.windowStartDate} ${orderForm.windowStartTime} to ${orderForm.windowEndDate} ${orderForm.windowEndTime}`,
-
-              }
-
-            : a
-
-        )
-
-      );
-
-    } else {
-
-      const now = new Date();
-
-      const delivery: DeliveryRecord = {
-
-        id: `order-${now.getTime()}`,
-
-        siteId: site.id,
-
-        timestamp: now.toISOString(),
-
-        supplier: orderForm.supplier,
-
-        gradeCode: orderTank.gradeCode,
-
-        bolGallons: orderForm.gallons,
-
-        atgReceivedGallons: 0,
-
-        status: 'CHECK',
-
-      };
-
-      const orderAlert: Alert = {
-
-        id: `order-alert-${now.getTime()}`,
-
-        siteId: site.id,
-
-        timestamp: now.toISOString(),
-
-        severity: 'WARNING',
-
-        type: 'RUNOUT_RISK',
-
-        message: `Fuel order placed for ${orderTank.name} (mock) - ${orderForm.gallons} gal, ${orderForm.supplier}, ${orderForm.windowStartDate} ${orderForm.windowStartTime} to ${orderForm.windowEndDate} ${orderForm.windowEndTime}`,
-
-        isOpen: true,
-
-      };
-
-      setDeliveries((prev) => [delivery, ...prev]);
-
-      setAlerts((prev) => [orderAlert, ...prev]);
-
-    }
-
-    setOrderTank(null);
-
-  }
-
-
-
-  async function submitFuelOrder() {
-
-    if (!siteId) return;
-
-    setOrderLoading(true);
-
-    setOrderMessage('');
-
-    const payload = {
-
-      supplierId: orderSupplierId || suppliers[0]?.id,
-
-      requestedDeliveryWindowStart: new Date(orderWindowStart).toISOString(),
-
-      requestedDeliveryWindowEnd: new Date(orderWindowEnd).toISOString(),
-
-      notes: orderNotes,
-
-      lines: orderLines.map((l) => ({ gradeCode: l.gradeCode, requestedGallons: l.gallons })),
-
-    };
-
-    try {
-
-      const created = await post<FuelOrder>(`/sites/${siteId}/orders`, payload);
-
-      setFuelOrders((prev) => [created, ...prev]);
-
-      setOrderMessage('Order created (mock)');
-
-    } catch (err) {
-
-      setOrderMessage('Failed to create order (mock)');
-
-    } finally {
-
-      setOrderLoading(false);
-
-    }
-
-  }
-
-
-
-  async function advanceOrder(order: FuelOrder) {
-
-    if (order.status === 'DELIVERED' || order.status === 'CANCELLED') return;
-
-    const next = nextOrderStatus(order.status);
-
-    if (next === order.status) return;
-
-    try {
-
-      const updated = await put<FuelOrder>(`/sites/${order.siteId}/orders/${order.id}`, { status: next });
-
-      setFuelOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-
-      if (next === 'DELIVERED') {
-
-        const now = new Date().toISOString();
-
-        const newDeliveries: DeliveryRecord[] = order.lines.map((line, idx) => {
-
-          const tank = tanks.find((t) => t.siteId === order.siteId && t.gradeCode === line.gradeCode);
-
-          const preLevel = tank ? tank.currentGallons : 0;
-
-          const expectedReading = preLevel + line.requestedGallons;
-
-          return {
-
-            id: `order-del-${order.id}-${idx}`,
-
-            siteId: order.siteId,
-
-            timestamp: now,
-
-            supplier: suppliers.find((s) => s.id === order.supplierId)?.name || order.supplierId,
-
-            gradeCode: line.gradeCode,
-
-            bolGallons: line.requestedGallons,
-
-            atgReceivedGallons: expectedReading,
-
-            preDeliveryGallons: preLevel,
-
-            expectedReadingGallons: expectedReading,
-
-            status: 'OK',
-
-          };
-
-        });
-
-        setDeliveries((prev) => [...newDeliveries, ...prev]);
-
-        setTanks((prev) =>
-
-          prev.map((t) => {
-
-            const delivered = newDeliveries.find((d) => d.gradeCode === t.gradeCode && d.siteId === t.siteId);
-
-            return delivered ? { ...t, currentGallons: delivered.atgReceivedGallons } : t;
-
-          })
-
-        );
-
-      }
-
-    } catch (err) {
-
-      // ignore
-
-    }
-
-  }
-
-
-
-  async function cancelOrder(order: FuelOrder) {
-
-    if (order.status === 'DELIVERED' || order.status === 'CANCELLED') return;
-
-    setConfirmState({
-
-      open: true,
-
-      message: 'Cancel this fuel order?',
-
-      onConfirm: async () => {
-
-        try {
-
-          const updated = await put<FuelOrder>(`/sites/${order.siteId}/orders/${order.id}`, { status: 'CANCELLED' });
-
-          setFuelOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-
-        } finally {
-
-          setConfirmState({ open: false, message: '', onConfirm: () => {} });
-
-        }
-
-      },
-
-    });
-
-  }
-
-
-
-  function jumpToOrdering(prefillFromAlert?: Alert) {
-
-    if (orderSuggestion) {
-
-      setOrderLines(
-
-        orderSuggestion.suggestedLines.map((l) => ({
-
-          gradeCode: l.gradeCode,
-
-          gallons: Math.max(Math.round(l.suggestedOrderGallons / 10) * 10, 0),
-
-        }))
-
-      );
-
-    }
-
-    if (!orderSupplierId && suppliers[0]) setOrderSupplierId(suppliers[0].id);
-
-    if (prefillFromAlert) setOrderMessage('Order prefilled from notification (mock)');
-
-    setViewTab('orders');
-
-    setTimeout(() => orderingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-
-  }
-
-
-
-  async function handleBackOfficeSync(tank: Tank) {
-
-    if (!siteId) return;
-
-    setBackOfficeSyncing(tank.id);
-
-    setBackOfficeMessage('');
-
-    try {
-
-      const res = await post<BackOfficeSyncResult>(`/sites/${siteId}/backoffice-sync`, {
-
-        tankId: tank.id,
-
-        gradeCode: tank.gradeCode,
-
-      });
-
-      setBackOfficeMessage(res.message);
-
-    } catch (err) {
-
-      console.error(err);
-
-      setBackOfficeMessage('Back office sync failed (mock).');
-
-    } finally {
-
-      setBackOfficeSyncing(null);
-
-    }
-
-  }
-
   async function handleBackOfficeSyncAll() {
 
     if (!siteId) return;
 
-    setBackOfficeSyncing('ALL');
-
     setBackOfficeMessage('');
 
     try {
 
-      const res = await post<BackOfficeSyncResult>(`/sites/${siteId}/backoffice-sync`, {
-
+      const res = await post<BackOfficeSyncResult>(`/api/sites/${siteId}/sync-backoffice`, {
         gradeCode: 'ALL',
-
       });
 
-      setBackOfficeMessage(res.message);
+      setBackOfficeMessage(res.message || 'Back office sync completed (mock).');
 
     } catch (err) {
 
@@ -793,17 +336,7 @@ export default function SiteDetailPage() {
 
     } finally {
 
-      setBackOfficeSyncing(null);
-
     }
-
-  }
-
-
-
-  function handleRequestService(tank: Tank) {
-
-    openServiceModal(`Service requested for ${tank.name} to address water/critical status.`);
 
   }
 
@@ -853,7 +386,7 @@ export default function SiteDetailPage() {
 
     try {
 
-      const created = await post<ServiceTicket>(`/sites/${siteId}/service-tickets`, payload);
+      const created = await post<ServiceTicket>(`/api/sites/${siteId}/service-tickets`, payload);
 
       setServiceTickets((prev) => [created, ...prev]);
 
@@ -867,6 +400,31 @@ export default function SiteDetailPage() {
 
   }
 
+  function submitCanonicalTicket() {
+    if (!siteId || createTicket.isPending) return;
+    if (!ticketForm.description.trim()) {
+      window.alert('Please add a brief description.');
+      return;
+    }
+    const selectedOrder = canonOrders.find((o) => o.id === ticketForm.orderId);
+    const payload: CanonTicket = {
+      id: '',
+      siteId,
+      orderId: ticketForm.orderId || undefined,
+      jobberId: selectedOrder ? selectedOrder.jobberId : undefined,
+      type: ticketForm.type,
+      description: ticketForm.description.trim(),
+      status: 'OPEN',
+      createdAt: '',
+      updatedAt: '',
+    };
+    createTicket.mutate(payload, {
+      onSuccess: () => {
+        setTicketForm({ type: 'SHORT_DELIVERY', description: '', orderId: '' });
+      },
+    });
+  }
+
 
 
   async function closeServiceTicket(ticket: ServiceTicket) {
@@ -875,7 +433,7 @@ export default function SiteDetailPage() {
 
     try {
 
-      const updated = await put<ServiceTicket>(`/sites/${siteId}/service-tickets/${ticket.id}`, { status: 'CLOSED' });
+      const updated = await put<ServiceTicket>(`/api/sites/${siteId}/service-tickets/${ticket.id}`, { status: 'CLOSED' });
 
       setServiceTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
 
@@ -906,28 +464,19 @@ export default function SiteDetailPage() {
         >
           <div>
             <div style={{ fontWeight: 800, fontSize: '1.25rem' }}>{site.name}</div>
-            <div className="muted">
-              {site.address} - {site.city}
-            </div>
+            <div className="muted">{site.address}</div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <Dropdown
                 trigger={
                   <span>
-                    {viewSelectValue === 'overview'
-                      ? 'Views'
-                      : viewSelectValue === 'loss'
-                      ? 'Fuel Loss History'
-                      : viewSelectValue === 'orders'
-                      ? 'Orders & deliveries'
-                      : 'Notifications'}
+                    {viewSelectValue === 'overview' ? 'Views' : viewSelectValue === 'loss' ? 'Fuel Loss History' : 'Notifications'}
                   </span>
                 }
                 items={[
                   { id: 'overview', label: 'Overview', onSelect: () => setViewTab('overview') },
                   { id: 'loss', label: 'Fuel Loss History', onSelect: () => setViewTab('loss') },
-                  { id: 'orders', label: 'Orders & deliveries', onSelect: () => setViewTab('orders') },
                   {
                     id: 'alerts',
                     label: `Notifications (${openAlertCount})`,
@@ -941,7 +490,6 @@ export default function SiteDetailPage() {
               <Dropdown
                 trigger={<span>Actions</span>}
                 items={[
-                  { id: 'order', label: 'Order fuel', onSelect: () => setViewTab('orders') },
                   { id: 'service', label: 'Request Service', onSelect: () => setViewTab('service') },
                   { id: 'sync', label: 'Sync with back office', onSelect: () => handleBackOfficeSyncAll() },
                 ]}
@@ -980,11 +528,11 @@ export default function SiteDetailPage() {
             </span>
             <span
               className={`badge ${
-                site.lowestTankPercent <= 10 ? 'badge-red' : site.lowestTankPercent <= 20 ? 'badge-yellow' : 'badge-green'
+                lowestTankPercent <= 10 ? 'badge-red' : lowestTankPercent <= 20 ? 'badge-yellow' : 'badge-green'
               }`}
               style={{ fontSize: '0.8rem' }}
             >
-              Lowest tank: {site.lowestTankPercent}%
+              Lowest tank: {lowestTankPercent}%
             </span>
           </div>
           {backOfficeMessage ? <div className="muted">{backOfficeMessage}</div> : null}
@@ -1030,10 +578,6 @@ export default function SiteDetailPage() {
                           .reduce((sum, v) => sum + v.varianceGallons, 0)
                       : undefined
                   }
-                  onOrder={openOrderModal}
-                  onService={handleRequestService}
-                  onSync={handleBackOfficeSync}
-                  syncing={backOfficeSyncing === tank.id}
                 />
               ))}
           </div>
@@ -1121,218 +665,11 @@ export default function SiteDetailPage() {
         </div>
       ) : null}
 
-      {viewTab === 'orders' ? (
-        <>
-          <div className="grid" style={{ gridTemplateColumns: '1fr', gap: '1rem' }}>
-            <div className="card">
-              <div className="card-header">
-                <div style={{ fontWeight: 700 }}>Recent orders</div>
-                <div className="muted">{fuelOrders.length} records</div>
-              </div>
-              <div className="list-grid">
-                {[...fuelOrders]
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .map((o) => {
-                  const supplierName = suppliers.find((s) => s.id === o.supplierId)?.name || o.supplierId;
-                  const totalGallons = o.lines.reduce((sum, l) => sum + l.requestedGallons, 0);
-                  return (
-                    <div className="list-card" key={o.id}>
-                      <div className="list-meta">
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{supplierName}</div>
-                          <div className="muted" style={{ fontSize: '0.9rem' }}>
-                            {new Date(o.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                        <span className="badge badge-yellow">{o.status}</span>
-                      </div>
-                      <div className="list-meta" style={{ justifyContent: 'flex-start', gap: '0.4rem' }}>
-                        {o.lines.map((l) => (
-                          <span key={l.id} className="badge">
-                            {gradeLabel(l.gradeCode)} {l.requestedGallons.toLocaleString()} gal
-                          </span>
-                        ))}
-                      </div>
-                      <div className="muted">
-                        {new Date(o.requestedDeliveryWindowStart).toLocaleString()} –{' '}
-                        {new Date(o.requestedDeliveryWindowEnd).toLocaleString()}
-                      </div>
-                      <div className="list-meta">
-                        <span className="badge badge-blue">{totalGallons.toLocaleString()} gal total</span>
-                        <div className="list-actions">
-                          {o.status !== 'DELIVERED' && o.status !== 'CANCELLED' ? (
-                            <>
-                              <button className="button ghost" style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem' }} onClick={() => advanceOrder(o)}>
-                                Advance
-                              </button>
-                              <button
-                                className="button ghost"
-                                style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem', color: '#ef4444' }}
-                                onClick={() => cancelOrder(o)}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {fuelOrders.length === 0 ? <div className="muted">No orders yet.</div> : null}
-            </div>
-
-            <DeliveryTable
-              deliveries={deliveries}
-              onMarkOk={(id) => {
-                setDeliveries((prev) =>
-                  prev.map((d) => (d.id === id ? { ...d, status: 'OK' as const, atgReceivedGallons: d.bolGallons } : d))
-                );
-                setAlerts((prev) =>
-                  prev.map((a) => (a.message.includes('Fuel order placed') ? { ...a, isOpen: false } : a))
-                );
-              }}
-              onMarkShort={(id) => {
-                const delivery = deliveries.find((d) => d.id === id);
-                if (!delivery) return;
-                setConfirmState({
-                  open: true,
-                  message: 'Mark this delivery as short?',
-                  onConfirm: () => {
-                    setDeliveries((prev) =>
-                      prev.map((d) =>
-                        d.id === id
-                          ? { ...d, status: 'SHORT' as const, atgReceivedGallons: Math.max(d.bolGallons - 150, 0) }
-                          : d
-                      )
-                    );
-                    const shortAlert: Alert = {
-                      id: `short-${id}`,
-                      siteId: delivery.siteId,
-                      timestamp: new Date().toISOString(),
-                      severity: 'WARNING',
-                      type: 'SHORT_DELIVERY',
-                      message: `Delivery marked short for ${delivery.gradeCode} (mock)`,
-                      isOpen: true,
-                    };
-                    setAlerts((prev) => [shortAlert, ...prev]);
-                    setConfirmState({ open: false, message: '', onConfirm: () => {} });
-                  },
-                });
-              }}
-              onReportIssue={(id) => {
-                const note = 'Ticket opened with supplier (mock); notifications sent per alert settings.';
-                setDeliveries((prev) => prev.map((d) => (d.id === id ? { ...d, issueNote: note } : d)));
-                const delivery = deliveries.find((d) => d.id === id);
-                if (delivery) {
-                  const issueAlert: Alert = {
-                    id: `issue-${id}`,
-                    siteId: delivery.siteId,
-                    timestamp: new Date().toISOString(),
-                    severity: 'INFO',
-                    type: 'ATG_POS_MISMATCH',
-                    message: `Issue ticket created for ${delivery.gradeCode} delivery (mock); supplier notified.`,
-                    isOpen: true,
-                  };
-                  setAlerts((prev) => [issueAlert, ...prev]);
-                }
-              }}
-            />
-          </div>
-
-          <div className="card" ref={orderingRef} id="ordering">
-            <div className="card-header">
-              <div style={{ fontWeight: 700 }}>Fuel Ordering</div>
-              {orderMessage ? <div className="muted">{orderMessage}</div> : null}
-            </div>
-            <div className="card" style={{ margin: 0 }}>
-              <div className="card-header">
-                <div style={{ fontWeight: 700 }}>Suggested order</div>
-                <div className="muted">
-                  Generated {orderSuggestion ? new Date(orderSuggestion.generatedAt).toLocaleString() : ''}
-                </div>
-              </div>
-              <div className="grid" style={{ gap: '0.5rem' }}>
-                {orderLines.map((line, idx) => (
-                  <div
-                    key={`${line.gradeCode}-${idx}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between' }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{gradeLabel(line.gradeCode)}</div>
-                      <div className="muted">
-                        {orderSuggestion?.suggestedLines
-                          .find((l) => l.gradeCode === line.gradeCode)
-                          ?.percentFull.toFixed(0)}
-                        % full · recommend{' '}
-                        {orderSuggestion?.suggestedLines
-                          .find((l) => l.gradeCode === line.gradeCode)
-                          ?.suggestedOrderGallons.toLocaleString()}{' '}
-                        gal
-                      </div>
-                    </div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={line.gallons}
-                      onChange={(e) =>
-                        setOrderLines((prev) =>
-                          prev.map((l, i) => (i === idx ? { ...l, gallons: Number(e.target.value) } : l))
-                        )
-                      }
-                      style={{ width: 120, padding: '0.5rem' }}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div
-                className="grid"
-                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem', marginTop: '0.75rem' }}
-              >
-                <div className="form-field">
-                  <label>Supplier</label>
-                  <select value={orderSupplierId} onChange={(e) => setOrderSupplierId(e.target.value)}>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Notes</label>
-                  <input value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} placeholder="Optional" />
-                </div>
-                <div className="form-field">
-                  <label>Window start</label>
-                  <input
-                    type="datetime-local"
-                    value={orderWindowStart}
-                    onChange={(e) => setOrderWindowStart(e.target.value)}
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Window end</label>
-                  <input
-                    type="datetime-local"
-                    value={orderWindowEnd}
-                    onChange={(e) => setOrderWindowEnd(e.target.value)}
-                  />
-                </div>
-              </div>
-              <button className="button" style={{ marginTop: '0.75rem' }} disabled={orderLoading} onClick={submitFuelOrder}>
-                {orderLoading ? 'Submitting...' : 'Submit order'}
-              </button>
-            </div>
-          </div>
-        </>
-      ) : null}
       {viewTab === 'alerts' ? (
         <div className="grid" style={{ gridTemplateColumns: '1fr', gap: '1rem' }}>
-          <div className="card">
-            <div className="card-header">
-              <div style={{ fontWeight: 700 }}>Notifications</div>
+      <div className="card">
+        <div className="card-header">
+          <div style={{ fontWeight: 700 }}>Notifications</div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   className={alertTab === 'OPEN' ? 'button' : 'button ghost'}
@@ -1362,7 +699,7 @@ export default function SiteDetailPage() {
               }
               onAction={(a, action) => {
                 if (action === 'reorder') {
-                  jumpToOrdering(a);
+                  window.location.href = '/orders';
                 } else if (action === 'service') {
                   openServiceModal(`Service requested for issue: ${a.message}`);
                 } else if (action === 'view') {
@@ -1371,23 +708,105 @@ export default function SiteDetailPage() {
               }}
             />
           </div>
-          <div className="card">
-            <div className="card-header">
-              <div style={{ fontWeight: 700 }}>Incident timeline</div>
-              <div className="muted">Latest alerts, deliveries, and loss events</div>
-            </div>
-            <div className="timeline">
-              {timeline.map((t) => (
-                <div key={t.time + t.title} className="timeline-item">
-                  <div style={{ fontWeight: 600 }}>{new Date(t.time).toLocaleString()}</div>
-                  <div>{t.title}</div>
-                  <div className="muted">{t.detail}</div>
-                </div>
-              ))}
-              {timeline.length === 0 ? <div className="muted">No recent activity.</div> : null}
-            </div>
+        <div className="card">
+          <div className="card-header">
+            <div style={{ fontWeight: 700 }}>Incident timeline</div>
+            <div className="muted">Latest alerts, deliveries, and loss events</div>
+          </div>
+          <div className="timeline">
+            {timeline.map((t) => (
+              <div key={t.time + t.title} className="timeline-item">
+                <div style={{ fontWeight: 600 }}>{new Date(t.time).toLocaleString()}</div>
+                <div>{t.title}</div>
+                <div className="muted">{t.detail}</div>
+              </div>
+            ))}
+            {timeline.length === 0 ? <div className="muted">No recent activity.</div> : null}
           </div>
         </div>
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <div style={{ fontWeight: 700 }}>Issue tickets</div>
+              <div className="muted">Canonical tickets from the unified API</div>
+            </div>
+          </div>
+          <div className="grid" style={{ gap: '0.75rem' }}>
+            <div className="card" style={{ margin: 0 }}>
+              <div className="card-header">
+                <div style={{ fontWeight: 700 }}>New ticket</div>
+                {createTicket.isPending ? <div className="muted">Submitting...</div> : null}
+              </div>
+              <div className="grid" style={{ gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                <div className="form-field">
+                  <label>Type</label>
+                  <select
+                    value={ticketForm.type}
+                    onChange={(e) => setTicketForm((prev) => ({ ...prev, type: e.target.value as CanonTicket['type'] }))}
+                  >
+                    <option value="SHORT_DELIVERY">Short delivery</option>
+                    <option value="QUALITY_ISSUE">Quality issue</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Order (optional)</label>
+                  <select
+                    value={ticketForm.orderId}
+                    onChange={(e) => setTicketForm((prev) => ({ ...prev, orderId: e.target.value }))}
+                  >
+                    <option value="">No order selected</option>
+                    {fuelOrders.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {new Date(o.createdAt).toLocaleDateString()} - {o.lines.map((l) => l.gradeCode).join(', ')} ({o.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="form-field">
+                <label>Description</label>
+                <textarea
+                  rows={2}
+                  value={ticketForm.description}
+                  onChange={(e) => setTicketForm((prev) => ({ ...prev, description: e.target.value }))}
+                  style={{ padding: '0.75rem 0.9rem', borderRadius: 10, border: '1px solid var(--border)', fontFamily: 'inherit' }}
+                  placeholder="Briefly describe the issue"
+                />
+              </div>
+              <button className="button" onClick={submitCanonicalTicket} disabled={createTicket.isPending}>
+                {createTicket.isPending ? 'Submitting...' : 'Create ticket'}
+              </button>
+            </div>
+            {canonTickets.map((t: CanonTicket) => (
+              <div
+                key={t.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.65rem 0.5rem',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 700 }}>{t.type.replace('_', ' ')}</div>
+                  <div className="muted" style={{ fontSize: '0.9rem' }}>
+                    {t.description || 'No description provided'}
+                  </div>
+                  <div className="muted" style={{ fontSize: '0.85rem' }}>
+                    {new Date(t.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                <span className={t.status === 'RESOLVED' ? 'badge badge-green' : t.status === 'IN_PROGRESS' ? 'badge badge-yellow' : 'badge badge-red'}>
+                  {t.status}
+                </span>
+              </div>
+            ))}
+            {canonTickets.length === 0 ? <div className="muted">No issue tickets yet.</div> : null}
+          </div>
+        </div>
+      </div>
       ) : null}
       {viewTab === 'service' ? (
         <div className="card">
@@ -1439,38 +858,6 @@ export default function SiteDetailPage() {
           </div>
         </div>
       ) : null}
-      {orderTank ? (
-
-        <OrderModal
-
-          tank={orderTank}
-
-          form={orderForm}
-
-          suppliers={supplierOptions}
-
-          recommendedGallons={getRecommendedGallons(orderTank)}
-
-          maxGallons={Math.max(orderTank.capacityGallons - orderTank.currentGallons, 0)}
-
-          onChange={setOrderForm}
-
-          isOpen={!!orderTank}
-
-          existingOrder={getActiveOrder(orderTank) || undefined}
-
-          onClose={() => setOrderTank(null)}
-
-          onSubmit={submitOrder}
-
-          onCancelOrder={() => setOrderTank(null)}
-
-        />
-
-      ) : null}
-
-
-
       <ConfirmModal
 
         open={confirmState.open}
@@ -1655,7 +1042,7 @@ export default function SiteDetailPage() {
 
 
 
-function gradeSortKey(tank: Tank) {
+function gradeSortKey(tank: UITank) {
 
   const nameMatch = tank.name.match(/(\d{2})/);
 
@@ -1691,16 +1078,5 @@ function gradeLabel(code: string) {
 
 }
 
-
-
-function nextOrderStatus(current: FuelOrderStatus) {
-
-  const idx = orderStatusFlow.indexOf(current);
-
-  if (idx === -1 || idx === orderStatusFlow.length - 1) return current;
-
-  return orderStatusFlow[idx + 1];
-
-}
 
 

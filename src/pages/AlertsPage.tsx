@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { get } from '../api/apiClient';
-import type { Alert, SiteSummary } from '../types';
+import type { Alert, ServiceCompany, SiteSummary } from '../types';
 import AlertBadge from '../components/AlertBadge';
 import PageHeader from '../components/PageHeader';
 import { pageHeaderConfig } from '../config/pageHeaders';
+import { useCreateTicket } from '../api/hooks';
 
 function formatType(type: Alert['type']) {
   const map: Record<Alert['type'], string> = {
@@ -26,6 +27,8 @@ export default function AlertsPage() {
   const [closeAlert, setCloseAlert] = useState<Alert | null>(null);
   const [closeNote, setCloseNote] = useState('');
   const [alertTab, setAlertTab] = useState<'OPEN' | 'CLOSED'>('OPEN');
+  const [serviceLoadingId, setServiceLoadingId] = useState<string | null>(null);
+  const createTicket = useCreateTicket();
 
   useEffect(() => {
     get<Alert[]>('/alerts').then(setAlerts);
@@ -104,9 +107,35 @@ export default function AlertsPage() {
                     {a.type === 'WATER_DETECTED' && (
                       <button
                         className="button ghost"
-                        onClick={() => navigate('/issues')}
+                        disabled={serviceLoadingId === a.id}
+                        onClick={async () => {
+                          setServiceLoadingId(a.id);
+                          try {
+                            const svc = await get<ServiceCompany[]>(`/api/sites/${a.siteId}/service-companies`);
+                            const partner = svc[0];
+                            if (!partner) {
+                              navigate('/issues', { state: { siteId: a.siteId, openModal: true, partnerType: 'SERVICE' } });
+                              return;
+                            }
+                            await createTicket.mutateAsync({
+                              id: `tkt-${Date.now()}`,
+                              siteId: a.siteId,
+                              serviceCompanyId: partner.id,
+                              jobberId: undefined,
+                              orderId: undefined,
+                              type: 'OTHER',
+                              description: `Service needed for alert: ${a.message}`,
+                              status: 'OPEN',
+                              createdAt: new Date().toISOString(),
+                              updatedAt: new Date().toISOString(),
+                            });
+                            navigate('/issues');
+                          } finally {
+                            setServiceLoadingId(null);
+                          }
+                        }}
                       >
-                        Service
+                        {serviceLoadingId === a.id ? 'Creating…' : 'Service'}
                       </button>
                     )}
                     <button

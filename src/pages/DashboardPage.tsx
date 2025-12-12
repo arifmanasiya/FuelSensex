@@ -57,7 +57,7 @@ export default function DashboardPage() {
           <div className="pill" style={{ background: 'rgba(255,255,255,0.08)', color: '#dbeafe' }}>
             FuelSense Watchtower
           </div>
-          <h1>Take control of every gallon: ordering, timing, and data in one place.</h1>
+          <h1>Make FuelSense of your fuel business: ordering, timing, and data in one place.</h1>
           <div style={{ opacity: 0.9, marginBottom: '1rem' }}>
             We're seeing {totals.openIssues} open issues across your {totals.totalSites} stores. Estimated daily exposure is 115 gallons.
           </div>

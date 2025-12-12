@@ -375,7 +375,7 @@ export default function SettingsPage() {
                       </div>
                       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                         <button className="button ghost" type="button" onClick={() => setExpandedContactId(expandedContactId === c.id ? null : c.id)}>
-                          {expandedContactId === c.id ? 'Hide' : 'Edit'}
+                          {expandedContactId === c.id ? 'Hide' : 'Show'}
                         </button>
                         <button className="button ghost" type="button" onClick={() => requestDeleteContact(c)}>
                           Delete
@@ -950,7 +950,7 @@ export default function SettingsPage() {
                       </div>
                       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                         <button className="button ghost" type="button" onClick={() => setExpandedJobberId(expandedJobberId === j.id ? null : j.id)}>
-                          {expandedJobberId === j.id ? 'Hide' : 'Edit'}
+                          {expandedJobberId === j.id ? 'Hide' : 'Show'}
                         </button>
                         <button className="button ghost" type="button" onClick={() => handleDeleteJobber(j)}>
                           Delete
@@ -1114,7 +1114,7 @@ export default function SettingsPage() {
                       </div>
                       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                         <button className="button ghost" type="button" onClick={() => setExpandedServiceId(expandedServiceId === s.id ? null : s.id)}>
-                          {expandedServiceId === s.id ? 'Hide' : 'Edit'}
+                          {expandedServiceId === s.id ? 'Hide' : 'Show'}
                         </button>
                         <button className="button ghost" type="button" onClick={() => handleDeleteService(s)}>
                           Delete

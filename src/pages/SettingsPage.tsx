@@ -277,6 +277,17 @@ export default function SettingsPage() {
     qc.invalidateQueries({ queryKey: qk.jobbers });
     qc.invalidateQueries({ queryKey: qk.sites });
   }
+
+  async function handleDeleteService(companyId: string) {
+    if (!window.confirm('Delete this service company?')) return;
+    await del(`/sites/${selectedSiteId}/service-companies/${companyId}`);
+    setServiceCompanies((prev) => prev.filter((c) => c.id !== companyId));
+    if (settings?.serviceCompanyId === companyId) {
+      await saveNow({ serviceCompanyId: undefined, serviceContactName: undefined, servicePhone: undefined, serviceEmail: undefined, serviceNotes: undefined });
+    }
+    qc.invalidateQueries({ queryKey: qk.settings });
+    qc.invalidateQueries({ queryKey: qk.sites });
+  }
   const requestDeleteContact = (contact: ManagerContact) => setConfirmDelete(contact);
 
   async function handleDeleteContactConfirmed() {
@@ -1088,6 +1099,9 @@ export default function SettingsPage() {
                       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                         <button className="button ghost" type="button" onClick={() => setExpandedServiceId(expandedServiceId === s.id ? null : s.id)}>
                           {expandedServiceId === s.id ? 'Hide' : 'Edit'}
+                        </button>
+                        <button className="button ghost" type="button" onClick={() => handleDeleteService(s.id)}>
+                          Delete
                         </button>
                       </div>
                     </div>

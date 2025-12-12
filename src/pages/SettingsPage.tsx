@@ -120,16 +120,18 @@ export default function SettingsPage() {
 
   const Collapsible: React.FC<{ id: string; title: string; children: React.ReactNode }> = ({ id, title, children }) => (
     <div className="card" style={{ margin: 0 }}>
-      <button
-        type="button"
-        onClick={() => toggleCard(id)}
-        aria-expanded={cardOpen[id] ?? true}
-        className="card-header"
-        style={{ width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-      >
+      <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
         <span style={{ fontWeight: 700 }}>{title}</span>
-        <span style={{ fontWeight: 700 }}>{cardOpen[id] ?? true ? '−' : '+'}</span>
-      </button>
+        <button
+          type="button"
+          className="button ghost"
+          onClick={() => toggleCard(id)}
+          aria-expanded={cardOpen[id] ?? true}
+          style={{ padding: '0.35rem 0.65rem', fontSize: '0.9rem' }}
+        >
+          {cardOpen[id] ?? true ? 'Hide' : 'Show'}
+        </button>
+      </div>
       {cardOpen[id] ?? true ? <div style={{ padding: '0.75rem' }}>{children}</div> : null}
     </div>
   );
@@ -1494,3 +1496,4 @@ function parseSection(hash: string): SettingsSection | null {
   }
   return null;
 }
+

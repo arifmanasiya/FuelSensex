@@ -76,9 +76,6 @@ export default function IssueDetailPage() {
               <option value="RESOLVED">Resolved</option>
             </select>
           </div>
-          <Link className="button ghost" to="/issues">
-            Back to issues
-          </Link>
         </div>
         <div style={{ padding: '0.75rem', display: 'grid', gap: '0.75rem' }}>
           <div>
@@ -98,14 +95,22 @@ export default function IssueDetailPage() {
               ))}
             </div>
             {isResolved ? (
-              <div className="muted">Issue is resolved. Comments and status are locked.</div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', alignItems: 'center' }}>
+                <div className="muted">Issue is resolved. Comments and status are locked.</div>
+                <Link className="button ghost" to="/issues">
+                  Back to issues
+                </Link>
+              </div>
             ) : (
               <>
                 <div className="form-field" style={{ marginTop: '0.5rem' }}>
                   <label>Add comment</label>
                   <textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} rows={3} />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', alignItems: 'center' }}>
+                  <Link className="button ghost" to="/issues">
+                    Back to issues
+                  </Link>
                   <button
                     className="button"
                     onClick={() => {

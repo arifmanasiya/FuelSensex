@@ -1174,8 +1174,8 @@ export default function SettingsPage() {
                           <label>Notes</label>
                           <textarea
                             rows={2}
-                            value={s.notes || ''}
-                            onChange={(e) => handleUpdateService(s.id, { notes: e.target.value })}
+                            defaultValue={s.notes || ''}
+                            onBlur={(e) => handleUpdateService(s.id, { notes: e.target.value })}
                             style={{ width: '100%' }}
                           />
                         </div>

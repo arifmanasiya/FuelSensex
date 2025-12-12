@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { get } from '../api/apiClient';
 import type { Alert, ServiceCompany, SiteSummary } from '../types';
+import type { Order } from '../models/types';
 import type { Ticket } from '../models/types';
 import AlertBadge from '../components/AlertBadge';
 import PageHeader from '../components/PageHeader';
@@ -29,6 +30,7 @@ export default function AlertsPage() {
   const [closeNote, setCloseNote] = useState('');
   const [alertTab, setAlertTab] = useState<'OPEN' | 'CLOSED'>('OPEN');
   const [serviceLoadingId, setServiceLoadingId] = useState<string | null>(null);
+  const [reorderLoadingId, setReorderLoadingId] = useState<string | null>(null);
   const createTicket = useCreateTicket();
 
   useEffect(() => {
@@ -101,8 +103,31 @@ export default function AlertsPage() {
                       View
                     </button>
                     {(a.type === 'RUNOUT_RISK' || a.type === 'SHORT_DELIVERY') && (
-                      <button className="button" onClick={() => navigate(`/sites/${a.siteId}#ordering`)}>
-                        Re-order
+                      <button
+                        className="button"
+                        disabled={reorderLoadingId === a.id}
+                        onClick={async () => {
+                          setReorderLoadingId(a.id);
+                          try {
+                            const orders = await get<Order[]>(`/api/orders?siteId=${a.siteId}`);
+                            const hasActive = orders.some(
+                              (o) =>
+                                o.status !== 'DELIVERED' &&
+                                o.status !== 'DELIVERED_SHORT' &&
+                                o.status !== 'DELIVERED_OVER' &&
+                                o.status !== 'CANCELLED',
+                            );
+                            if (hasActive) {
+                              setAlerts((prev) => prev.map((al) => (al.id === a.id ? { ...al, isOpen: false } : al)));
+                              return;
+                            }
+                            navigate(`/orders/new?siteId=${a.siteId}`);
+                          } finally {
+                            setReorderLoadingId(null);
+                          }
+                        }}
+                      >
+                        {reorderLoadingId === a.id ? 'Checking…' : 'Re-order'}
                       </button>
                     )}
                     {a.type === 'WATER_DETECTED' && (

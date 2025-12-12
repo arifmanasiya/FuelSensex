@@ -596,6 +596,7 @@ export default function SettingsPage() {
                 flexWrap: 'nowrap',
                 justifyContent: 'flex-start',
                 alignSelf: 'flex-start',
+                justifySelf: 'flex-start',
                 width: 'auto',
               }}
             >

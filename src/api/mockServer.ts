@@ -240,9 +240,15 @@ let tankOverrides: Record<
     alertThresholds?: { lowPercent?: number; criticalPercent?: number };
   }
 > = {};
-const seededSites = buildCanonicalSites();
-const seededTanks = seededSites.flatMap((s) => s.tanks || []);
-seedAtgEventsForLast30Days(seededSites, seededTanks);
+
+let atgSeeded = false;
+function ensureAtgSeeded() {
+  if (atgSeeded) return;
+  const seededSites = buildCanonicalSites();
+  const seededTanks = seededSites.flatMap((s) => s.tanks || []);
+  seedAtgEventsForLast30Days(seededSites, seededTanks);
+  atgSeeded = true;
+}
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -1111,6 +1117,7 @@ function delay<T>(value: T, ms = 200 + Math.random() * 300): Promise<T> {
 }
 
 export async function mockRequest<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+  ensureAtgSeeded();
   if (path.startsWith('/api/')) {
     // Canonical API surface
     if (method === 'GET' && path === '/api/sites') {

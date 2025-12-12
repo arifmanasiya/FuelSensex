@@ -82,13 +82,6 @@ export default function IssueDetailPage() {
         </div>
         <div style={{ padding: '0.75rem', display: 'grid', gap: '0.75rem' }}>
           <div>
-            <div className="label">Description</div>
-            <div>{ticket.description}</div>
-          </div>
-          <div className="muted" style={{ fontSize: '0.9rem' }}>
-            Created {new Date(ticket.createdAt).toLocaleString()}
-          </div>
-          <div>
             <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Comments</div>
             <div className="stack" style={{ display: 'grid', gap: '0.5rem' }}>
               {(ticket.comments || []).length === 0 ? <div className="muted">No comments yet.</div> : null}

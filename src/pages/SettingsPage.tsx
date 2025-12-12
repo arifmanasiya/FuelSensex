@@ -581,6 +581,8 @@ export default function SettingsPage() {
                 gap: '0.75rem',
                 flexWrap: 'nowrap',
                 justifyContent: 'flex-start',
+                alignSelf: 'flex-start',
+                width: 'auto',
               }}
             >
               <div style={{ fontWeight: 700 }}>Alerts</div>

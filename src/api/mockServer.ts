@@ -25,6 +25,8 @@ import type {
   SiteSettings as CanonSiteSettings,
   Ticket as CanonTicket,
 } from '../models/types';
+import type { AtgEventType, AtgInventoryEvent } from '../models/atgEvents';
+import { seedAtgEventsForLast30Days, getAtgEvents, latestInventoryByTank, alarmsForSite } from '../mock/mockAtgEventStore';
 
 const PRODUCT_MAP: Record<string, CanonTank['productType']> = {
   REG: 'REGULAR',
@@ -238,6 +240,9 @@ let tankOverrides: Record<
     alertThresholds?: { lowPercent?: number; criticalPercent?: number };
   }
 > = {};
+const seededSites = buildCanonicalSites();
+const seededTanks = seededSites.flatMap((s) => s.tanks || []);
+seedAtgEventsForLast30Days(seededSites, seededTanks);
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -814,18 +819,6 @@ let settings: SiteSettings[] = [
   },
 ];
 
-let runoutPredictions: RunoutPrediction[] = [
-  { siteId: 'site-101', tankId: 'tank-101-1', gradeCode: 'REG', hoursToTenPercent: 9, hoursToEmpty: 27 },
-  { siteId: 'site-101', tankId: 'tank-101-2', gradeCode: 'PREM', hoursToTenPercent: 21, hoursToEmpty: 60 },
-  { siteId: 'site-101', tankId: 'tank-101-3', gradeCode: 'DSL', hoursToTenPercent: 36, hoursToEmpty: 80 },
-  { siteId: 'site-202', tankId: 'tank-202-1', gradeCode: 'REG', hoursToTenPercent: 30, hoursToEmpty: 72 },
-  { siteId: 'site-202', tankId: 'tank-202-2', gradeCode: 'DSL', hoursToTenPercent: 7, hoursToEmpty: 19 },
-  { siteId: 'site-202', tankId: 'tank-202-3', gradeCode: 'PREM', hoursToTenPercent: 18, hoursToEmpty: 48 },
-  { siteId: 'site-303', tankId: 'tank-303-1', gradeCode: 'REG', hoursToTenPercent: 5, hoursToEmpty: 14 },
-  { siteId: 'site-303', tankId: 'tank-303-2', gradeCode: 'PREM', hoursToTenPercent: 11, hoursToEmpty: 29 },
-  { siteId: 'site-303', tankId: 'tank-303-3', gradeCode: 'DSL', hoursToTenPercent: 9, hoursToEmpty: 24 },
-];
-
 function computeLowestTankPercent(siteId: string): number {
   const siteTanks = tanks.filter((t) => t.siteId === siteId && t.gradeCode !== 'MID');
   if (!siteTanks.length) return 0;
@@ -874,38 +867,26 @@ function deriveMidTank(siteId: string): Tank | null {
 
 function computeRunoutForSite(siteId: string): RunoutPrediction[] {
   const siteTanks = getPhysicalSiteTanks(siteId);
-  const staticPreds = runoutPredictions.filter((r) => r.siteId === siteId);
-
-  const siteEvents = varianceEvents
-    .filter((v) => v.siteId === siteId)
-    .map((v) => ({ date: new Date(v.timestamp).toDateString(), gallons: Math.abs(v.varianceGallons) }))
-    .reduce<Record<string, number>>((acc, ev) => {
-      acc[ev.date] = (acc[ev.date] || 0) + ev.gallons;
-      return acc;
-    }, {});
-
-  const dailyTotals = Object.values(siteEvents).sort((a, b) => b - a);
-  const periods = 5;
-  const alpha = 2 / (periods + 1);
-  let ema = 600;
-  dailyTotals.forEach((val, idx) => {
-    ema = idx === 0 ? val : val * alpha + ema * (1 - alpha);
-  });
-
-  const burnPerHour = ema / 24;
-
   const preds = siteTanks.map((t) => {
-    const tenPercentLevel = 0.1 * t.capacityGallons;
-    const hoursToTen =
-      burnPerHour > 0 ? Math.max(Math.floor((t.currentGallons - tenPercentLevel) / burnPerHour), 0) : 0;
-    const hoursToEmpty = burnPerHour > 0 ? Math.max(Math.floor(t.currentGallons / burnPerHour), 0) : 0;
-    const match = staticPreds.find((r) => r.tankId === t.id);
+    const { events } = getAtgEvents({ siteId, tankId: t.id, type: 'INVENTORY', limit: 12 });
+    const invs = (events as AtgInventoryEvent[]).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+    const latest = invs[invs.length - 1];
+    const earliest = invs[0];
+    const hours =
+      invs.length > 1 ? (Date.parse(latest.timestamp) - Date.parse(earliest.timestamp)) / (1000 * 60 * 60) : 0;
+    const delta = invs.length > 1 ? latest.volumeGallons - earliest.volumeGallons : 0;
+    const burnPerHour = hours > 0 ? -(delta / hours) : 0;
+    const cap = t.capacityGallons || 1;
+    const tenPercentLevel = 0.1 * cap;
+    const latestVol = latest?.volumeGallons ?? t.currentGallons ?? t.capacityGallons * 0.5;
+    const hoursToTen = burnPerHour > 0 ? Math.max(Math.floor((latestVol - tenPercentLevel) / burnPerHour), 0) : Infinity;
+    const hoursToEmpty = burnPerHour > 0 ? Math.max(Math.floor(latestVol / burnPerHour), 0) : Infinity;
     return {
       siteId,
       tankId: t.id,
       gradeCode: t.gradeCode,
-      hoursToTenPercent: match?.hoursToTenPercent ?? hoursToTen,
-      hoursToEmpty: match?.hoursToEmpty ?? hoursToEmpty,
+      hoursToTenPercent: hoursToTen,
+      hoursToEmpty,
     };
   });
 
@@ -923,6 +904,80 @@ function computeRunoutForSite(siteId: string): RunoutPrediction[] {
   }
 
   return preds;
+}
+
+function deriveLiveStatus(siteId: string) {
+  const site = buildCanonicalSites().find((s) => s.id === siteId);
+  if (!site) throw new Error('Site not found');
+  const invMap = latestInventoryByTank(siteId);
+  const alarms = alarmsForSite(siteId);
+  const preds = computeRunoutForSite(siteId);
+  const tanksLive = buildCanonicalTanks(siteId).map((t) => {
+    const latest = invMap.get(t.id);
+    const fillPercent =
+      latest?.fillPercent ??
+      Math.round(((latest?.volumeGallons ?? t.currentVolumeGallons ?? t.capacityGallons * 0.5) / (t.capacityGallons || 1)) * 100);
+    const water = latest?.waterHeightInches;
+    let status: 'OK' | 'WARNING' | 'CRITICAL' = 'OK';
+    if (typeof water === 'number' && water > 3) status = 'CRITICAL';
+    else if (typeof water === 'number' && water > 1) status = 'WARNING';
+    const activeAlarms = alarms.filter((a) => a.tankId === t.id && a.severity === 'ALARM');
+    return {
+      ...t,
+      currentVolumeGallons: latest?.volumeGallons ?? t.currentVolumeGallons,
+      fillPercent,
+      waterHeightInches: water,
+      temperatureF: latest?.temperatureF,
+      status,
+      activeAlarms,
+    };
+  });
+
+  const alertsDerived: Alert[] = [];
+  tanksLive.forEach((t) => {
+    const runout = preds.find((p) => p.tankId === t.id);
+    if (runout && runout.hoursToTenPercent < 12) {
+      alertsDerived.push({
+        id: `runout-${t.id}`,
+        siteId,
+        severity: 'WARNING',
+        type: 'RUNOUT_RISK',
+        message: `${t.name} projected to hit 10% in ${runout.hoursToTenPercent}h`,
+        isOpen: true,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    if (typeof t.waterHeightInches === 'number' && t.waterHeightInches > 1.5) {
+      alertsDerived.push({
+        id: `water-${t.id}`,
+        siteId,
+        severity: t.waterHeightInches > 3 ? 'CRITICAL' : 'WARNING',
+        type: 'WATER_DETECTED',
+        message: `Water detected in ${t.name}`,
+        isOpen: true,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    const tankAlarms = alarms.filter((a) => a.tankId === t.id && a.severity === 'ALARM');
+    tankAlarms.forEach((al) =>
+      alertsDerived.push({
+        id: `alarm-${al.id}`,
+        siteId,
+        severity: 'CRITICAL',
+        type: 'ATG_ALARM' as any,
+        message: al.humanReadable,
+        isOpen: true,
+        timestamp: al.timestamp,
+      })
+    );
+  });
+
+  return {
+    site,
+    tanks: tanksLive,
+    runout: preds,
+    alerts: alertsDerived,
+  };
 }
 
 let serviceCompanies: ServiceCompany[] = [
@@ -1091,18 +1146,19 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
         );
       }
       if (method === 'GET' && subPath === '/live-status') {
-        const site = buildCanonicalSites().find((s) => s.id === siteId);
-        if (!site) throw new Error('Site not found');
-        const runout = computeRunoutForSite(siteId);
-        const siteAlerts = alerts.filter((a) => a.siteId === siteId && a.isOpen);
-        return delay(
-          {
-            site,
-            tanks: buildCanonicalTanks(siteId),
-            runout,
-            alerts: siteAlerts,
-          } as unknown as T
-        );
+        const live = deriveLiveStatus(siteId);
+        return delay(live as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/events') {
+        const url = new URL(`http://dummy${path}`);
+        const from = url.searchParams.get('from') || undefined;
+        const to = url.searchParams.get('to') || undefined;
+        const type = (url.searchParams.get('type') as AtgEventType) || undefined;
+        const tankId = url.searchParams.get('tankId') || undefined;
+        const limit = Number(url.searchParams.get('limit') || 200);
+        const offset = Number(url.searchParams.get('offset') || 0);
+        const result = getAtgEvents({ siteId, tankId, from, to, type, limit, offset });
+        return delay(result as unknown as T);
       }
       if (method === 'GET' && subPath === '/tanks') {
         return delay(buildCanonicalTanks(siteId) as unknown as T);
@@ -1665,7 +1721,10 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
   }
 
   if (method === 'GET' && path === '/alerts') {
-    return delay(alerts as unknown as T);
+    // derive from live status for first site for backward compatibility
+    const firstSite = sites[0];
+    const derived = firstSite ? deriveLiveStatus(firstSite.id).alerts : [];
+    return delay(derived as unknown as T);
   }
 
   throw new Error(`Mock route not implemented: ${method} ${path}`);

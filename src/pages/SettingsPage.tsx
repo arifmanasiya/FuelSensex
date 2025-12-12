@@ -1398,21 +1398,27 @@ export default function SettingsPage() {
                 {canonicalSnapshot.backOfficeStatus || 'OK'}
               </span>
             </div>
-            <div className="value">{canonicalSnapshot.backOfficeName}</div>
+            <div className="value" style={{ fontSize: '1rem', fontWeight: 700, letterSpacing: '0.01em' }}>
+              {canonicalSnapshot.backOfficeName}
+            </div>
           </div>
           <div className="kpi" style={{ minWidth: 160 }}>
             <div className="label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <span>Jobber</span>
               <span className="badge badge-green">OK</span>
             </div>
-            <div className="value">{canonicalSnapshot.jobberName}</div>
+            <div className="value" style={{ fontSize: '1rem', fontWeight: 700, letterSpacing: '0.01em' }}>
+              {canonicalSnapshot.jobberName}
+            </div>
           </div>
           <div className="kpi" style={{ minWidth: 200 }}>
             <div className="label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <span>Notification contacts</span>
               <span className="badge badge-green">OK</span>
             </div>
-            <div className="value">{canonicalSnapshot.notificationContacts} contacts</div>
+            <div className="value" style={{ fontSize: '1rem', fontWeight: 700, letterSpacing: '0.01em' }}>
+              {canonicalSnapshot.notificationContacts} contacts
+            </div>
           </div>
         </div>
       </div>

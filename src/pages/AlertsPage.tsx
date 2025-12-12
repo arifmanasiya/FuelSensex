@@ -104,20 +104,7 @@ export default function AlertsPage() {
                     {a.type === 'WATER_DETECTED' && (
                       <button
                         className="button ghost"
-                        onClick={() =>
-                          setAlerts((prev) => [
-                            {
-                              id: `svc-${a.id}`,
-                              siteId: a.siteId,
-                              timestamp: new Date().toISOString(),
-                              severity: 'WARNING',
-                              type: 'WATER_DETECTED',
-                              message: 'Service ticket opened (mock) for tank issue',
-                              isOpen: true,
-                            },
-                            ...prev,
-                          ])
-                        }
+                        onClick={() => navigate('/issues')}
                       >
                         Service
                       </button>

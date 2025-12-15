@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Use repository path so GitHub Pages assets resolve correctly at /fuelsense/.
-  base: '/fuelsense/',
+  // Use repository path so GitHub Pages assets resolve correctly at /FuelSense/.
+  base: '/FuelSense/',
   plugins: [react()],
   build: {
     outDir: 'docs',

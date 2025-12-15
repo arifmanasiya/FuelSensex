@@ -17,6 +17,8 @@ import RouteErrorBoundary from './components/RouteErrorBoundary';
 import HomePage from './pages/HomePage';
 import { Navigate } from 'react-router-dom';
 
+const basename = import.meta.env.BASE_URL || '/';
+
 export const router = createBrowserRouter(
   [
     {
@@ -63,8 +65,8 @@ export const router = createBrowserRouter(
     path: '*',
     element: <RouteErrorBoundary />,
   },
-],
-{
-  basename: '/FuelSensex/',
-}
+  ],
+  {
+    basename,
+  }
 );

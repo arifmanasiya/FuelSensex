@@ -28,19 +28,21 @@ export default function ConfirmModal({
             type="button"
             aria-label="Close"
             onClick={onCancel}
-            style={{ width: 36, height: 36, padding: 0, fontSize: '1.1rem' }}
+            style={{ width: 38, height: 38, padding: 0, fontSize: '1.2rem', color: 'inherit' }}
           >
-            X
+            ×
           </button>
         </div>
         <div style={{ marginBottom: '1rem' }}>{message}</div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button className="button" onClick={onConfirm}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button className="button" style={{ minWidth: 120 }} onClick={onConfirm}>
             {confirmLabel}
           </button>
-          <button className="button ghost" onClick={onCancel}>
-            {cancelLabel}
-          </button>
+          {cancelLabel ? (
+            <button className="button ghost" style={{ minWidth: 120 }} onClick={onCancel}>
+              {cancelLabel}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (localStorage.getItem('fuelguard-token')) {
-      navigate('/');
+      navigate('/app');
     }
   }, [navigate]);
 
@@ -22,7 +22,7 @@ export default function LoginPage() {
       const res = await post<{ user: { name: string }; token: string }>('/auth/login', { email, password });
       localStorage.setItem('fuelguard-token', res.token);
       localStorage.setItem('fuelguard-user', res.user.name);
-      navigate('/');
+      navigate('/app');
     } catch (err) {
       console.error(err);
       alert('Mock login failed');
@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div style={{ fontWeight: 800, fontSize: '1.5rem', marginBottom: '0.5rem' }}>FuelSense Login</div>
+        <div style={{ fontWeight: 800, fontSize: '1.5rem', marginBottom: '0.5rem' }}>FuelSensex Login</div>
         <div className="muted" style={{ marginBottom: '1.25rem' }}>
           Mock experience — any credentials will work.
         </div>

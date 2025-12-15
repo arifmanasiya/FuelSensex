@@ -8,4 +8,16 @@ export const qk = {
   settings: ['settings'] as const,
   tickets: (siteId?: string) => ['tickets', { siteId }] as const,
   ticket: (id: string) => ['tickets', id] as const,
+  pageHeaders: ['pageHeaders'] as const,
+  alerts: (siteId?: string) => ['alerts', { siteId }] as const,
+  serviceCompanies: (siteId?: string) => ['serviceCompanies', { siteId }] as const,
+  siteSettings: (siteId: string) => ['settings', { siteId }] as const,
+  deliveries: (siteId?: string) => ['deliveries', { siteId }] as const,
+  contacts: (siteId?: string) => ['contacts', { siteId }] as const,
+  siteDetails: (siteId: string) => ['sites', siteId, 'details'] as const,
+  variance: (siteId: string) => ['sites', siteId, 'variance'] as const,
+  salesSeries: (siteId: string) => ['sites', siteId, 'sales-series'] as const,
+  runoutPredictions: (siteId: string) => ['sites', siteId, 'runout'] as const,
+
+  serviceTickets: (siteId?: string) => ['serviceTickets', { siteId }] as const,
 };

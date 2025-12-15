@@ -15,6 +15,7 @@ function formatType(type: Alert['type']) {
     RUNOUT_RISK: 'Low fuel risk',
     WATER_DETECTED: 'Water in tank',
     ATG_POS_MISMATCH: 'Meter vs register mismatch',
+    ATG_ALARM: 'ATG alarm',
   };
   return map[type] ?? type.replace(/_/g, ' ');
 }
@@ -30,6 +31,7 @@ const issueCatalog: Record<
   RUNOUT_RISK: { actions: [{ key: 'reorder', label: 'Order fuel' }] },
   WATER_DETECTED: { actions: [{ key: 'service', label: 'Request service' }] },
   ATG_POS_MISMATCH: { actions: [{ key: 'view', label: 'View details' }] },
+  ATG_ALARM: { actions: [{ key: 'service', label: 'Request service' }] },
 };
 
 export default function AlertList({ alerts, title = 'Notifications', onClose, onAction }: Props) {

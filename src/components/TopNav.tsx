@@ -1,4 +1,4 @@
-import logo from '../assets/logo.png';
+import logo from '../assets/logo_new.png';
 
 interface Props {
   onMenuToggle?: () => void;
@@ -7,9 +7,9 @@ interface Props {
 export default function TopNav({ onMenuToggle }: Props) {
   return (
     <header className="topnav" style={{ justifyContent: 'flex-start' }}>
-      <div className="title" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <img src={logo} alt="FuelSense" style={{ height: 80, width: 'auto' }} />
-        <span style={{ fontWeight: 800, fontSize: '1.5rem', letterSpacing: '-0.02em' }}>FuelSense</span>
+      <div className="title" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+        <img src={logo} alt="FuelSensex" style={{ height: 32, width: 'auto' }} />
+        <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>FuelSensex</span>
       </div>
       <div style={{ marginLeft: 'auto' }}>
         <button

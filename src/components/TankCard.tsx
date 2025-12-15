@@ -1,12 +1,13 @@
 import type { RunoutPrediction } from '../types';
 import type { Tank as CanonTank } from '../models/types';
+import { formatDurationHours } from '../utils/duration';
 
 export type UITank = {
   id: string;
   siteId: string;
   name: string;
   productType: CanonTank['productType'];
-  gradeCode: 'REG' | 'PREM' | 'MID' | 'DSL';
+  gradeCode: 'REG' | 'SUP' | 'MID' | 'DSL';
   capacityGallons: number;
   currentGallons: number;
   waterLevelInches?: number;
@@ -70,7 +71,7 @@ export default function TankCard({
             <span className="badge badge-yellow" style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
               Blend/virtual
               <span
-                title="No physical tank; derived from Regular/Premium mix to gauge demand."
+              title="No physical tank; derived from Regular/Super mix to gauge demand."
                 aria-label="Midgrade is a derived blend"
                 style={{ fontWeight: 700, cursor: 'help' }}
               >
@@ -159,10 +160,10 @@ export default function TankCard({
       {runout ? (
         <div className="muted" style={{ marginTop: '0.35rem', display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="badge badge-yellow" style={{ fontSize: '0.75rem' }}>
-            10% in {runout.hoursToTenPercent}h
+            10% in {formatDurationHours(runout.hoursToTenPercent)}
           </span>
           <span className="badge badge-red" style={{ fontSize: '0.75rem' }}>
-            Empty in {runout.hoursToEmpty}h
+            Empty in {formatDurationHours(runout.hoursToEmpty)}
           </span>
         </div>
       ) : null}

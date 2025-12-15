@@ -12,7 +12,7 @@ export default function VarianceSummary({ todayGallons, todayValue, last7Gallons
   const gradeLabel = (code: string) => {
     if (code === 'REG') return 'Regular 87';
     if (code === 'MID') return 'Midgrade 89';
-    if (code === 'PREM') return 'Premium 93';
+    if (code === 'SUP') return 'Super 93';
     if (code === 'DSL') return 'Diesel';
     return code;
   };

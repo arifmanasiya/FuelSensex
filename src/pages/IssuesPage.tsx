@@ -1,10 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { get } from '../api/apiClient';
-import { useJobbers, useSites, useTickets, useCreateTicket } from '../api/hooks';
-import type { ServiceCompany } from '../types';
+import { useJobbers, useSites, useTickets, useCreateTicket, useServiceCompanies, usePageHeaders } from '../api/hooks';
 import PageHeader from '../components/PageHeader';
-import { pageHeaderConfig } from '../config/pageHeaders';
 
 export default function IssuesPage() {
   const { data: sites = [] } = useSites();
@@ -12,8 +9,9 @@ export default function IssuesPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPEN' | 'IN_PROGRESS' | 'RESOLVED'>('ALL');
   const { data: tickets = [] } = useTickets(selectedSiteId || undefined);
   const { data: jobbers = [] } = useJobbers();
+  const { data: serviceCompanies = [] } = useServiceCompanies(selectedSiteId || undefined);
+  const { data: pageHeaders } = usePageHeaders();
   const createTicket = useCreateTicket();
-  const [serviceCompanies, setServiceCompanies] = useState<ServiceCompany[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [newTicket, setNewTicket] = useState({
     partnerType: 'JOBBER' as 'JOBBER' | 'SERVICE',
@@ -22,20 +20,6 @@ export default function IssuesPage() {
     description: '',
   });
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (sites.length && !selectedSiteId) {
-      setSelectedSiteId(sites[0].id);
-    }
-  }, [sites, selectedSiteId]);
-
-  useEffect(() => {
-    if (!selectedSiteId) {
-      setServiceCompanies([]);
-      return;
-    }
-    get<ServiceCompany[]>(`/api/sites/${selectedSiteId}/service-companies`).then(setServiceCompanies);
-  }, [selectedSiteId]);
 
   const filtered = useMemo(() => {
     return tickets.filter((t) => (statusFilter === 'ALL' ? true : t.status === statusFilter));
@@ -47,14 +31,14 @@ export default function IssuesPage() {
     if (status === 'IN_PROGRESS') return <span className="badge badge-yellow" style={base}>In progress</span>;
     return <span className="badge badge-green" style={base}>Resolved</span>;
   };
-  const header = pageHeaderConfig.issues;
+  const header = pageHeaders?.issues;
 
   return (
     <div className="page">
       <PageHeader
-        title={header.title}
-        subtitle={header.subtitle}
-        infoTooltip={header.infoTooltip}
+        title={header?.title || 'Issues'}
+        subtitle={header?.subtitle}
+        infoTooltip={header?.infoTooltip}
         siteSelect={{
           value: selectedSiteId,
           onChange: setSelectedSiteId,
@@ -201,18 +185,18 @@ export default function IssuesPage() {
               role="button"
               tabIndex={0}
               style={{ cursor: 'pointer' }}
-              onClick={() => navigate(`/issues/${t.id}`)}
+              onClick={() => navigate(`/app/issues/${t.id}`)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  navigate(`/issues/${t.id}`);
+                  navigate(`/app/issues/${t.id}`);
                 }
               }}
             >
               <div className="list-meta">
                 <div>
                   <div style={{ fontWeight: 700 }}>
-                    <Link to={`/issues/${t.id}`} className="muted" style={{ fontWeight: 700 }}>
+                    <Link to={`/app/issues/${t.id}`} className="muted" style={{ fontWeight: 700 }}>
                       {t.type}
                     </Link>
                   </div>

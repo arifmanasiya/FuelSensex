@@ -1,10 +1,8 @@
-﻿import type {
+import type {
   Alert,
-  BackOfficeSyncResult,
   DeliveryRecord,
   Jobber,
   FuelOrder,
-  OrderSuggestion,
   ManagerContact,
   ServiceCompany,
   ServiceTicket,
@@ -16,6 +14,7 @@
   VarianceEvent,
   User,
   UserProfile,
+  PageHeaders,
 } from '../types';
 import type {
   Site as CanonSite,
@@ -25,15 +24,570 @@ import type {
   SiteSettings as CanonSiteSettings,
   Ticket as CanonTicket,
 } from '../models/types';
-import type { AtgEventType, AtgInventoryEvent } from '../models/atgEvents';
-import { seedAtgEventsForLast30Days, getAtgEvents, latestInventoryByTank, alarmsForSite } from '../mock/mockAtgEventStore';
+import type { AtgEventType, AtgInventoryEvent, AtgDeliveryEvent } from '../models/atgEvents';
+import { seedAtgEventsForLast30Days, getAtgEvents, latestInventoryByTank, alarmsForSite, findDeliveryById } from '../mock/mockAtgEventStore';
 
 const PRODUCT_MAP: Record<string, CanonTank['productType']> = {
   REG: 'REGULAR',
-  PREM: 'PREMIUM',
+  SUP: 'PREMIUM',
   DSL: 'DIESEL',
   MID: 'VIRTUAL_MIDGRADE',
+  PREM: 'PREMIUM', // Add PREM to map to PREMIUM
 };
+
+type MockData = {
+    pageHeadersData: PageHeaders;
+    mockUser: User;
+    userProfile: UserProfile;
+    sites: SiteSummary[];
+    tanks: Tank[];
+    alerts: Alert[];
+    deliveryLinks: Record<string, { orderNumber?: string; bolGallons?: number; poNumber?: string; updatedAt?: string; updatedBy?: string }>;
+    settings: SiteSettings[];
+    serviceCompanies: ServiceCompany[];
+    serviceTickets: ServiceTicket[];
+    jobbers: Jobber[];
+    managerContacts: ManagerContact[];
+    suppliers: Supplier[];
+    fuelOrders: FuelOrder[];
+    canonicalOrders: CanonOrder[];
+    canonicalTickets: CanonTicket[];
+    tankOverrides: Record<
+      string,
+      {
+        capacityGallons?: number;
+        targetFillGallons?: number;
+        alertThresholds?: { lowPercent?: number; criticalPercent?: number };
+      }
+    >;
+}
+
+let mockData: MockData | null = null;
+let atgSeeded = false;
+
+// Utility function to simulate network delay
+const delay = <T>(ms: number, value: T): Promise<T> =>
+  new Promise((resolve) => setTimeout(() => resolve(value), ms));
+
+function getInitialMockData(): MockData {
+  if (mockData) return mockData;
+
+  const pageHeadersData: PageHeaders = {
+    dashboard: {
+      title: 'Dashboard',
+      subtitle: 'Multi-site view',
+      infoTooltip: 'Filter by site to see totals, issues, and at-risk tanks.',
+    },
+    alerts: {
+      title: 'Notifications',
+      subtitle: 'Notifications by site',
+      infoTooltip: 'Switch sites and tabs to review open or closed alerts.',
+    },
+    settings: {
+      title: 'Settings',
+      subtitle: 'Per-site configuration',
+      infoTooltip: 'Pick a site to review and adjust its settings.',
+    },
+    ordersList: {
+      title: 'Recent orders',
+      subtitle: 'Track pending, dispatched, and delivered loads.',
+      infoTooltip: 'Filter by site to review open orders and progress through each state.',
+    },
+    createOrder: {
+      title: 'Create order',
+      subtitle: 'Enter gallons per tank.',
+      infoTooltip:
+        'Pick the correct site in the Site dropdown at the top, then for each physical tank enter the desired gallons in its “Gallons” field and finally hit Submit order.',
+    },
+    deliveries: {
+      title: 'Deliveries',
+      subtitle: 'Track recent deliveries and variance status.',
+      infoTooltip: 'Filter by site to review delivered loads and any short/over/missing statuses.',
+    },
+    issues: {
+      title: 'Issues',
+      subtitle: 'Track delivery/service issues across jobbers and service companies.',
+      infoTooltip: 'Filter by site and status; open or review tickets tied to deliveries and partners.',
+    },
+  };
+
+  const mockUser: User = {
+    id: 'user-1',
+    email: 'owner@example.com',
+    name: 'Station Owner',
+  };
+
+  const userProfile: UserProfile = {
+    id: 'user-1',
+    companyName: 'FuelSensex Pilot Stores',
+    contactName: 'Station Owner',
+    email: 'owner@example.com',
+    phone: '+1 (555) 222-7777',
+    notes: 'Prefers email first; SMS for critical issues.',
+  };
+
+  const sites: SiteSummary[] = [
+    {
+      id: 'site-101',
+      name: 'Quick Stop Market',
+      address: '1200 Market St',
+      city: 'Nashville, TN',
+      status: 'ATTENTION',
+      currentDailyVarianceGallons: -42,
+      currentDailyVarianceValue: -147,
+      openAlertCount: 3,
+      lowestTankPercent: 18,
+    },
+    {
+      id: 'site-202',
+      name: 'Lakeside Fuel',
+      address: '4557 Lake Ave',
+      city: 'Memphis, TN',
+      status: 'HEALTHY',
+      currentDailyVarianceGallons: -8,
+      currentDailyVarianceValue: -28,
+      openAlertCount: 1,
+      lowestTankPercent: 33,
+    },
+    {
+      id: 'site-303',
+      name: 'Ridgeview Gas & Go',
+      address: '7824 Ridge Rd',
+      city: 'Knoxville, TN',
+      status: 'CRITICAL',
+      currentDailyVarianceGallons: -65,
+      currentDailyVarianceValue: -228,
+      openAlertCount: 4,
+      lowestTankPercent: 9,
+    },
+  ];
+
+  const tanks: Tank[] = [
+    {
+      id: 'tank-101-1',
+      siteId: 'site-101',
+      name: 'Regular 87',
+      gradeCode: 'REG',
+      capacityGallons: 12000,
+      currentGallons: 3600,
+      waterLevelInches: 0.3,
+      temperatureC: 18,
+      status: 'LOW',
+    },
+    {
+      id: 'tank-101-2',
+      siteId: 'site-101',
+      name: 'Super 93',
+      gradeCode: 'SUP',
+      capacityGallons: 8000,
+      currentGallons: 5200,
+      waterLevelInches: 0.1,
+      temperatureC: 19,
+      status: 'OK',
+    },
+    {
+      id: 'tank-101-4',
+      siteId: 'site-101',
+      name: 'Midgrade 89',
+      gradeCode: 'MID',
+      capacityGallons: 7000,
+      currentGallons: 3600,
+      waterLevelInches: 0.12,
+      temperatureC: 19,
+      status: 'LOW',
+    },
+    {
+      id: 'tank-101-3',
+      siteId: 'site-101',
+      name: 'Diesel',
+      gradeCode: 'DSL',
+      capacityGallons: 10000,
+      currentGallons: 7500,
+      waterLevelInches: 0.6,
+      temperatureC: 16,
+      status: 'WATER',
+    },
+    {
+      id: 'tank-202-1',
+      siteId: 'site-202',
+      name: 'Regular 87',
+      gradeCode: 'REG',
+      capacityGallons: 10000,
+      currentGallons: 6200,
+      waterLevelInches: 0.05,
+      temperatureC: 20,
+      status: 'OK',
+    },
+    {
+      id: 'tank-202-2',
+      siteId: 'site-202',
+      name: 'Diesel',
+      gradeCode: 'DSL',
+      capacityGallons: 9000,
+      currentGallons: 3000,
+      waterLevelInches: 0.2,
+      temperatureC: 21,
+      status: 'CRITICAL',
+    },
+    {
+      id: 'tank-202-3',
+      siteId: 'site-202',
+      name: 'Super 93',
+      gradeCode: 'SUP',
+      capacityGallons: 7000,
+      currentGallons: 4200,
+      waterLevelInches: 0.08,
+      temperatureC: 20,
+      status: 'OK',
+    },
+    {
+      id: 'tank-202-4',
+      siteId: 'site-202',
+      name: 'Midgrade 89',
+      gradeCode: 'MID',
+      capacityGallons: 6500,
+      currentGallons: 3100,
+      waterLevelInches: 0.1,
+      temperatureC: 20,
+      status: 'LOW',
+    },
+    {
+      id: 'tank-303-1',
+      siteId: 'site-303',
+      name: 'Regular 87',
+      gradeCode: 'REG',
+      capacityGallons: 12000,
+      currentGallons: 1900,
+      waterLevelInches: 0.4,
+      temperatureC: 17,
+      status: 'CRITICAL',
+    },
+    {
+      id: 'tank-303-2',
+      siteId: 'site-303',
+      name: 'Super 93',
+      gradeCode: 'SUP',
+      capacityGallons: 8000,
+      currentGallons: 2100,
+      waterLevelInches: 0.2,
+      temperatureC: 17,
+      status: 'LOW',
+    },
+    {
+      id: 'tank-303-3',
+      siteId: 'site-303',
+      name: 'Diesel',
+      gradeCode: 'DSL',
+      capacityGallons: 9000,
+      currentGallons: 3100,
+      waterLevelInches: 0.25,
+      temperatureC: 17,
+      status: 'LOW',
+    },
+    {
+      id: 'tank-303-4',
+      siteId: 'site-303',
+      name: 'Midgrade 89',
+      gradeCode: 'MID',
+      capacityGallons: 7000,
+      currentGallons: 2800,
+      waterLevelInches: 0.18,
+      temperatureC: 17,
+      status: 'CRITICAL',
+    },
+  ];
+
+  const alerts: Alert[] = [
+    {
+      id: 'alert-1',
+      siteId: 'site-101',
+      timestamp: new Date().toISOString(),
+      severity: 'CRITICAL',
+      type: 'WATER_DETECTED',
+      message: 'Water detected in Diesel tank above threshold',
+      isOpen: true,
+    },
+    {
+      id: 'alert-2',
+      siteId: 'site-101',
+      timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+      severity: 'WARNING',
+      type: 'RUNOUT_RISK',
+      message: 'Regular 87 predicted to hit 10% in 9 hours',
+      isOpen: true,
+    },
+    {
+      id: 'alert-3',
+      siteId: 'site-202',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
+      severity: 'INFO',
+      type: 'ATG_POS_MISMATCH',
+      message: 'ATG vs POS variance exceeded 15 gallons',
+      isOpen: true,
+    },
+    {
+      id: 'alert-4',
+      siteId: 'site-303',
+      timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+      severity: 'CRITICAL',
+      type: 'POSSIBLE_THEFT',
+      message: 'Unexplained drawdown detected overnight',
+      isOpen: true,
+    },
+    {
+      id: 'alert-5',
+      siteId: 'site-303',
+      timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+      severity: 'WARNING',
+      type: 'SHORT_DELIVERY',
+      message: 'Short delivery suspected on last drop',
+      isOpen: false,
+    },
+  ];
+
+  // Manual links from ATG delivery events to orders (user-created)
+  const deliveryLinks: Record<string, { orderNumber?: string; bolGallons?: number; poNumber?: string; updatedAt?: string; updatedBy?: string }> =
+    {};
+
+  const settings: SiteSettings[] = [
+    {
+      siteId: 'site-101',
+      lowTankPercent: 20,
+      criticalTankPercent: 10,
+      dailyVarianceAlertGallons: 60,
+      alertsEnabled: true,
+      notifyByEmail: true,
+      notifyBySms: true,
+      preferredComm: 'EMAIL',
+      alertFrequencyCritical: 'IMMEDIATE',
+      alertFrequencyWarning: 'HOURLY',
+      alertFrequencyInfo: 'DAILY',
+      jobberId: 'job-1',
+      jobberContactName: 'T. Reeves',
+      jobberPhone: '+1 (555) 201-0101',
+      jobberEmail: 'orders@marathonjobber.com',
+      serviceCompanyId: 'svc-1',
+      serviceContactName: 'Ana Patel',
+      servicePhone: '+1 (555) 200-1111',
+      serviceEmail: 'dispatch@bluetech.com', // Corrected property name
+      backOfficeProvider: 'MODISOFT',
+      backOfficeUsername: 'quickstop-owner',
+      backOfficePassword: 'password123',
+      defaultLoadRegGallons: 8000,
+      defaultLoadPremGallons: 4500,
+      defaultLoadDslGallons: 6000,
+      defaultLoadMidGallons: 5000,
+      capacityNotes: 'Reg 12k, SUP 8k, Diesel 10k',
+      tankTypePolicy: 'ALLOW_VIRTUAL',
+      virtualBlendRatio: '60/40 (SUP/Reg)',
+    },
+    {
+      siteId: 'site-202',
+      lowTankPercent: 18,
+      criticalTankPercent: 8,
+      dailyVarianceAlertGallons: 50,
+      alertsEnabled: true,
+      notifyByEmail: true,
+      notifyBySms: false,
+      preferredComm: 'SMS',
+      alertFrequencyCritical: 'IMMEDIATE',
+      alertFrequencyWarning: 'HOURLY',
+      alertFrequencyInfo: 'DAILY',
+      jobberId: 'job-2',
+      jobberContactName: 'L. Parker',
+      jobberPhone: '+1 (555) 202-0202', // Corrected property name
+      jobberEmail: 'dispatch@shelljobber.com', // Corrected property name
+      serviceCompanyId: 'svc-2',
+      serviceContactName: 'Luis Gomez',
+      servicePhone: '+1 (555) 333-4444', // Corrected property name
+      serviceEmail: 'support@pumpcare.com', // Corrected property name
+      backOfficeProvider: 'C_STORE',
+      backOfficeUsername: 'lakeside-admin',
+      backOfficePassword: 'welcome!',
+      defaultLoadRegGallons: 7000,
+      defaultLoadPremGallons: 4500,
+      defaultLoadDslGallons: 5500,
+      defaultLoadMidGallons: 5000,
+      capacityNotes: 'Virtual mid auto-calculated',
+      tankTypePolicy: 'ALLOW_VIRTUAL',
+      virtualBlendRatio: '60/40 (SUP/Reg)',
+    },
+    {
+      siteId: 'site-303',
+      lowTankPercent: 25,
+      criticalTankPercent: 12,
+      dailyVarianceAlertGallons: 75,
+      alertsEnabled: true,
+      notifyByEmail: true,
+      notifyBySms: true,
+      preferredComm: 'CALL',
+      alertFrequencyCritical: 'IMMEDIATE',
+      alertFrequencyWarning: 'HOURLY',
+      alertFrequencyInfo: 'DAILY',
+      jobberId: 'job-1',
+      jobberContactName: 'T. Reeves',
+      jobberPhone: '+1 (555) 201-0101', // Corrected property name
+      jobberEmail: 'orders@marathonjobber.com', // Corrected property name
+      serviceCompanyId: 'svc-3',
+      serviceContactName: 'Kayla Chen',
+      servicePhone: '+1 (555) 888-9999', // Corrected property name
+      serviceEmail: 'service@fuelsafe.io', // Corrected property name
+      backOfficeProvider: 'MODISOFT',
+      backOfficeUsername: 'ridgeview-manager',
+      backOfficePassword: 'fuel-safe-303',
+      defaultLoadRegGallons: 7500,
+      defaultLoadPremGallons: 4200,
+      defaultLoadDslGallons: 6000,
+      defaultLoadMidGallons: 4800,
+      capacityNotes: 'SUP 8k, Diesel 9k',
+      tankTypePolicy: 'ALLOW_VIRTUAL',
+      virtualBlendRatio: '60/40 (SUP/Reg)',
+    },
+  ];
+
+  const serviceCompanies: ServiceCompany[] = [
+    {
+      id: 'svc-1',
+      siteId: 'site-101',
+      name: 'BlueTech Services',
+      contactName: 'Ana Patel',
+      phone: '+1 (555) 200-1111',
+      email: 'dispatch@bluetech.com',
+      notes: '24/7 dispatch',
+      portal: { url: 'https://portal.bluetech.com', username: 'bluetech-user', password: 'pass123' },
+      communication: { preferredChannel: 'PORTAL' },
+    },
+    {
+      id: 'svc-2',
+      siteId: 'site-202',
+      name: 'PumpCare Pros',
+      contactName: 'Luis Gomez',
+      phone: '+1 (555) 333-4444',
+      email: 'support@pumpcare.com',
+      notes: 'Prefers morning visits',
+      portal: { url: 'https://portal.pumpcare.com', username: 'pump-user', password: 'welcome123' },
+      communication: { preferredChannel: 'CALL' },
+    },
+    {
+      id: 'svc-3',
+      siteId: 'site-303',
+      name: 'FuelSafe Technicians',
+      contactName: 'Kayla Chen',
+      phone: '+1 (555) 888-9999',
+      email: 'service@fuelsafe.io',
+      notes: 'Water remediation specialists',
+      portal: { url: 'https://portal.fuelsafe.io', username: 'fuelsafe-user', password: 'fs-safe' },
+      communication: { preferredChannel: 'EMAIL' },
+    },
+  ];
+
+  const serviceTickets: ServiceTicket[] = [];
+
+  const jobbers: Jobber[] = [
+    {
+      id: 'job-1',
+      name: 'Marathon Jobber',
+      contactName: 'T. Reeves',
+      phone: '+1 (555) 201-0101',
+      email: 'orders@marathonjobber.com',
+      portal: { url: 'https://portal.marathonjobber.com', username: 'marathon-user', password: 'pass123' },
+      communication: { preferredChannel: 'PORTAL' },
+    },
+    {
+      id: 'job-2',
+      name: 'Shell Jobber',
+      contactName: 'L. Parker',
+      email: 'dispatch@shelljobber.com', // Corrected property name
+      portal: { url: 'https://portal.shelljobber.com', username: 'shell-user', password: 'welcome123' },
+      communication: { preferredChannel: 'CALL' },
+    },
+  ];
+
+  const managerContacts: ManagerContact[] = [
+    { id: 'mgr-101-1', siteId: 'site-101', name: 'Jamie Flores', role: 'Store Manager', email: 'jamie@quickstop.com', phone: '+1 (555) 410-1122', notifyCritical: 'IMMEDIATE', notifyWarning: 'HOURLY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: true, notifyCall: false },
+    { id: 'mgr-101-2', siteId: 'site-101', name: 'Arun Shah', role: 'Owner', email: 'arun@quickstop.com', phone: '+1 (555) 410-7788', notifyCritical: 'IMMEDIATE', notifyWarning: 'DAILY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: false, notifyCall: true },
+    { id: 'mgr-202-1', siteId: 'site-202', name: 'Kelly Wu', role: 'Store Manager', email: 'kelly@lakesidefuel.com', phone: '+1 (555) 620-3344', notifyCritical: 'IMMEDIATE', notifyWarning: 'HOURLY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: true, notifyCall: false },
+    { id: 'mgr-303-1', siteId: 'site-303', name: 'Samir Patel', role: 'Store Manager', email: 'samir@ridgeviewgas.com', phone: '+1 (555) 920-4455', notifyCritical: 'IMMEDIATE', notifyWarning: 'HOURLY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: true, notifyCall: true },
+  ];
+
+  const suppliers: Supplier[] = [
+    {
+      id: 'sup-1',
+      name: 'Lone Star Fuel Supply',
+      contactName: 'Mike Thompson',
+      phone: '+1 (555) 123-4567',
+      email: 'mike@lonestarfuel.com',
+    },
+    {
+      id: 'sup-2',
+      name: 'Gulf Coast Petroleum',
+      contactName: 'Sarah Lee',
+      phone: '+1 (555) 987-6543',
+      email: 'slee@gulfcoastpetro.com',
+    },
+  ];
+
+  const fuelOrders: FuelOrder[] = [
+    {
+      id: 'ord-1',
+      siteId: 'site-101',
+      supplierId: 'sup-1',
+      status: 'CONFIRMED',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      requestedDeliveryWindowStart: new Date().toISOString(),
+      requestedDeliveryWindowEnd: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+      notes: 'Night delivery preferred',
+      lines: [
+        { id: 'line-1', gradeCode: 'REG', requestedGallons: 6000 },
+        { id: 'line-2', gradeCode: 'DSL', requestedGallons: 3000 },
+      ],
+    },
+  ];
+
+  let canonicalOrders: CanonOrder[] = [];
+  const canonicalTickets: CanonTicket[] = [];
+  const tankOverrides: Record<
+    string,
+    {
+      capacityGallons?: number;
+      targetFillGallons?: number;
+      alertThresholds?: { lowPercent?: number; criticalPercent?: number };
+    }
+  > = {};
+
+  // Build canonical orders after all other data is initialized
+  canonicalOrders = buildCanonicalOrders(sites, tanks, fuelOrders);
+  
+  return mockData = {
+    pageHeadersData, mockUser, userProfile, sites, tanks, alerts, deliveryLinks, settings,
+    serviceCompanies, serviceTickets, jobbers, managerContacts, suppliers, fuelOrders,
+    canonicalOrders, canonicalTickets, tankOverrides
+  };
+}
+
+
+function ensureAtgSeeded() {
+  if (atgSeeded) return;
+
+  const seededSites = buildCanonicalSites();
+  const seededTanks = seededSites.flatMap((s) => s.tanks || []);
+  seedAtgEventsForLast30Days(seededSites, seededTanks);
+  // canonicalOrders is now initialized inside getInitialMockData
+  atgSeeded = true;
+}
+
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+function normalizeGradeCode(code: string | undefined, tankId?: string, siteId?: string) {
+  if (!code) return tankId && siteId ? getGradeCodeForTank(tankId, siteId) : 'REG';
+  const upper = code.toUpperCase();
+  if (upper.startsWith('REG')) return 'REG';
+  if (upper.startsWith('SUP') || upper.startsWith('PRM') || upper.startsWith('PREM')) return 'SUP';
+  if (upper.startsWith('DSL') || upper.startsWith('DIESEL')) return 'DSL';
+  if (upper.startsWith('MID')) return 'MID';
+  return upper.slice(0, 3);
+}
 
 function mapTankToCanon(t: Tank): CanonTank {
   const productType = PRODUCT_MAP[t.gradeCode] ?? 'REGULAR';
@@ -52,28 +606,29 @@ function mapTankToCanon(t: Tank): CanonTank {
   };
 }
 
-function mapMidTankToCanon(virtual: Tank | null, reg: Tank | undefined, prem: Tank | undefined): CanonTank | null {
+function mapMidTankToCanon(virtual: Tank | null, reg: Tank | undefined, sup: Tank | undefined): CanonTank | null {
   if (!virtual) return null;
   const base = mapTankToCanon(virtual);
-  if (!reg || !prem) return base;
+  if (!reg || !sup) return base;
   return {
     ...base,
     isVirtual: true,
     blendSources: [
       { tankId: reg.id, ratio: 0.4 },
-      { tankId: prem.id, ratio: 0.6 },
+      { tankId: sup.id, ratio: 0.6 },
     ],
     computedVolumeGallons: base.currentVolumeGallons,
   };
 }
 
 function buildCanonicalTanks(siteId: string): CanonTank[] {
-  const siteSetting = settings.find((st) => st.siteId === siteId);
-  const siteTanks = tanks
+  const data = getInitialMockData();
+  const siteSetting = data.settings.find((st) => st.siteId === siteId);
+  const siteTanks = data.tanks
     .filter((t) => t.siteId === siteId && t.gradeCode !== 'MID')
     .map((t) => {
       const canon = mapTankToCanon(t);
-      const override = tankOverrides[t.id];
+      const override = data.tankOverrides[t.id];
       const capacityGallons = override?.capacityGallons ?? canon.capacityGallons;
       const targetFillGallons = override?.targetFillGallons;
       const baseThresholds = {
@@ -90,23 +645,24 @@ function buildCanonicalTanks(siteId: string): CanonTank[] {
         },
       };
     });
-  const reg = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'REG');
-  const prem = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'PREM');
+  const reg = data.tanks.find((t) => t.siteId === siteId && t.gradeCode === 'REG');
+  const sup = data.tanks.find((t) => t.siteId === siteId && t.gradeCode === 'SUP');
   const mid = deriveMidTank(siteId);
-  const virtual = mapMidTankToCanon(mid, reg, prem);
+  const virtual = mapMidTankToCanon(mid, reg, sup);
   return virtual ? [...siteTanks, virtual] : siteTanks;
 }
 
-function buildCanonicalSettings(siteId: string): CanonSiteSettings {
-  const s = settings.find((st) => st.siteId === siteId);
-  const siteJobbers: CanonJobber[] = jobbers.map((j) => ({
+export function buildCanonicalSettings(siteId: string): CanonSiteSettings {
+  const data = getInitialMockData();
+  const s = data.settings.find((st) => st.siteId === siteId);
+  const siteJobbers: CanonJobber[] = data.jobbers.map((j) => ({
     id: j.id,
     name: j.name,
     contact: { name: j.contactName ?? j.name, phone: j.phone, email: j.email },
     communication: { preferredChannel: 'EMAIL', notes: '' },
     system: { externalId: j.id, integrationType: 'MANUAL' },
   }));
-  const contacts = managerContacts.filter((c) => c.siteId === siteId);
+  const contacts = data.managerContacts.filter((c) => c.siteId === siteId);
   return {
     siteId,
     jobberId: s?.jobberId,
@@ -131,7 +687,8 @@ function buildCanonicalSettings(siteId: string): CanonSiteSettings {
 }
 
 function buildCanonicalSites(): CanonSite[] {
-  return sites.map((site) => ({
+  const data = getInitialMockData();
+  return data.sites.map((site) => ({
     id: site.id,
     code: site.id,
     name: site.name,
@@ -150,62 +707,158 @@ function mapOrderStatus(status: FuelOrder['status']): CanonOrder['status'] {
 }
 
 function getGradeCodeForTank(tankId: string, siteId: string): string {
-  const tank = tanks.find((t) => t.id === tankId && t.siteId === siteId);
+  const data = getInitialMockData();
+  const tank = data.tanks.find((t) => t.id === tankId && t.siteId === siteId);
   return tank?.gradeCode ?? 'REG';
 }
 
-function applyOrderStatus(order: CanonOrder, status: CanonOrder['status'], poNumber?: string) {
+function applyOrderStatus(order: CanonOrder, status: CanonOrder['status'], poNumber?: string, updatedBy = 'System') {
   if (status === 'CONFIRMED' && !order.jobberPoNumber) {
     order.jobberPoNumber = poNumber || `PO-${Date.now()}`;
   }
   if (status === 'DELIVERED') {
-    generateDeliveriesForOrder(order);
+    // derive delivered volumes from latest ATG delivery events per tank line
+    if (order.lines && order.lines.length) {
+      let matched = 0;
+      order.lines.forEach((line) => {
+        const deliveries = getAtgEvents({
+          siteId: order.siteId,
+          tankId: line.tankId,
+          type: 'DELIVERY',
+          from: order.createdAt,
+          limit: 1,
+          offset: 0,
+        }).events as AtgDeliveryEvent[];
+        const firstAfterOrder = deliveries[0];
+        if (firstAfterOrder) {
+          matched += 1;
+          line.quantityGallonsDelivered = firstAfterOrder.deliveredVolumeGallons;
+        }
+      });
+      if (matched === 0) {
+        throw new Error('No delivery event found after order creation time. Cannot mark delivered.');
+      }
+      const totalDelivered = order.lines.reduce((sum, l) => sum + (l.quantityGallonsDelivered ?? 0), 0);
+      order.quantityGallonsDelivered = totalDelivered;
+      const requested = order.lines.reduce((sum, l) => sum + l.quantityGallonsRequested, 0);
+      const short = totalDelivered < requested * 0.99;
+      const over = totalDelivered > requested * 1.01;
+      order.status = over ? 'DELIVERED_OVER' : short ? 'DELIVERED_SHORT' : 'DELIVERED';
+    } else {
+      order.status = 'DELIVERED';
+    }
+    order.updatedAt = new Date().toISOString();
+    order.updatedBy = updatedBy;
     return order;
   }
   order.status = status;
   order.updatedAt = new Date().toISOString();
+  order.updatedBy = updatedBy;
   return order;
 }
 
-function generateDeliveriesForOrder(order: CanonOrder) {
-  // remove existing deliveries for this orderNumber
-  if (order.orderNumber) {
-    deliveries = deliveries.filter((d) => d.orderNumber !== order.orderNumber);
-  }
-  if (!order.lines || !order.lines.length) return;
-  order.lines.forEach((line) => {
-    const gradeCode = getGradeCodeForTank(line.tankId, order.siteId);
-    const supplierName = jobbers.find((j) => j.id === order.jobberId)?.name || 'Jobber';
-    const varianceFactor = 1 + (Math.random() * 0.06 - 0.03); // +/-3%
-    const delivered = Math.max(0, Math.round(line.quantityGallonsRequested * varianceFactor));
-    const status =
-      delivered < line.quantityGallonsRequested * 0.99
-        ? 'SHORT'
-        : delivered > line.quantityGallonsRequested * 1.01
-        ? 'OVER'
-        : 'OK';
-    deliveries.unshift({
-      id: `del-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
-      siteId: order.siteId,
-      timestamp: new Date().toISOString(),
-      supplier: supplierName,
-      gradeCode,
-      bolGallons: line.quantityGallonsRequested,
-      atgReceivedGallons: delivered,
-      status,
-      orderNumber: order.orderNumber,
-    });
-    line.quantityGallonsDelivered = delivered;
+function buildDeliveryRecords(siteId?: string): DeliveryRecord[] {
+  const data = getInitialMockData();
+  const siteIds = siteId ? [siteId] : data.sites.map((s) => s.id);
+  const events: AtgDeliveryEvent[] = [];
+  siteIds.forEach((id) => {
+    const res = getAtgEvents({ siteId: id, type: 'DELIVERY', limit: 5000, offset: 0 });
+    events.push(...(res.events as AtgDeliveryEvent[]));
   });
-    const totalDelivered = order.lines.reduce((sum, l) => sum + (l.quantityGallonsDelivered ?? 0), 0);
-    order.quantityGallonsDelivered = totalDelivered;
-    const short = totalDelivered < order.quantityGallonsRequested * 0.99;
-    const over = totalDelivered > order.quantityGallonsRequested * 1.01;
-    order.status = over ? 'DELIVERED_OVER' : short ? 'DELIVERED_SHORT' : 'DELIVERED';
-    order.updatedAt = new Date().toISOString();
+  return events
+    .sort((a, b) => Date.parse(b.endTime || b.timestamp) - Date.parse(a.endTime || a.timestamp))
+    .map((evt) => {
+      const link = data.deliveryLinks[evt.id];
+      const linkedOrder = link?.orderNumber ? data.canonicalOrders.find((o) => o.orderNumber === link.orderNumber || o.id === link.orderNumber) : undefined;
+      const bolGallons = link?.bolGallons ?? (linkedOrder ? linkedOrder.quantityGallonsRequested : 0); // no BOL/ticket for unsolicited drops unless linked
+      const delivered = evt.deliveredVolumeGallons;
+      const status: DeliveryRecord['status'] =
+        bolGallons > 0
+          ? delivered < bolGallons * 0.99
+            ? 'SHORT'
+            : delivered > bolGallons * 1.01
+            ? 'OVER'
+            : 'OK'
+          : 'MISSING';
+      const supplier = linkedOrder ? data.jobbers.find((j) => j.id === linkedOrder.jobberId)?.name ?? 'Jobber' : 'Unsolicited delivery';
+      const gradeCode = normalizeGradeCode(evt.productCode, evt.tankId || undefined, evt.siteId);
+      const bundleOrderNumber = `DROP-${evt.siteId}-${evt.endTime || evt.timestamp}`;
+      const updatedAt = link?.updatedAt || evt.endTime || evt.timestamp;
+      const updatedBy = link?.updatedBy || 'ATG feed';
+      const poNumber = link?.poNumber ?? linkedOrder?.jobberPoNumber;
+      return {
+        id: evt.id,
+        siteId: evt.siteId,
+        timestamp: evt.endTime || evt.timestamp,
+        supplier,
+        gradeCode,
+        bolGallons,
+        atgReceivedGallons: delivered,
+        status,
+        preDeliveryGallons: evt.startVolumeGallons,
+        expectedReadingGallons: evt.endVolumeGallons,
+        orderNumber: link?.orderNumber || bundleOrderNumber, // same key groups multi-product drop into one delivery
+        poNumber,
+        issueNote: link?.orderNumber
+          ? link?.poNumber
+            ? `Linked to order ${link.orderNumber} (PO ${link.poNumber})`
+            : `Linked to order ${link.orderNumber}`
+          : 'No order linked (ATG-only delivery)',
+        updatedAt,
+        updatedBy,
+      };
+    });
+}
+
+function createUnsolicitedOrderFromDelivery(evt: AtgDeliveryEvent, jobberId: string, bolGallons?: number, poNumber?: string, existingOrderNumber?: string) {
+  const data = getInitialMockData();
+  const siteTanks = data.tanks.filter((t) => t.siteId === evt.siteId);
+  const grade = normalizeGradeCode(evt.productCode, evt.tankId || undefined, evt.siteId);
+  const tankMatch = siteTanks.find((t) => normalizeGradeCode(t.gradeCode, t.id, t.siteId) === grade) || siteTanks[0];
+  const lineRequested = bolGallons ?? evt.deliveredVolumeGallons;
+  const orderNumber = existingOrderNumber || `ORD-UNSOL-${evt.id}`;
+  const createdAt = evt.endTime || evt.timestamp;
+  let order = data.canonicalOrders.find((o) => o.orderNumber === orderNumber);
+  if (!order) {
+    order = {
+      id: orderNumber,
+      orderNumber,
+      siteId: evt.siteId,
+      tankId: tankMatch?.id || evt.tankId || grade,
+      jobberId: jobberId,
+      status: 'DELIVERED',
+      quantityGallonsRequested: 0,
+      quantityGallonsDelivered: 0,
+      createdAt,
+      updatedAt: createdAt,
+      ruleTriggered: false,
+      jobberPoNumber: poNumber,
+      lines: [],
+    };
+    data.canonicalOrders = [order, ...data.canonicalOrders]; // Update global canonicalOrders
   }
 
-function buildCanonicalOrders(): CanonOrder[] {
+  order.lines = order.lines || [];
+  const existingLine = order.lines.find((l) => l.tankId === (tankMatch?.id || evt.tankId || grade));
+  if (existingLine) {
+    existingLine.quantityGallonsRequested += lineRequested;
+    existingLine.quantityGallonsDelivered = (existingLine.quantityGallonsDelivered || 0) + evt.deliveredVolumeGallons;
+  } else {
+    order.lines.push({
+      tankId: tankMatch?.id || evt.tankId || grade,
+      quantityGallonsRequested: lineRequested,
+      quantityGallonsDelivered: evt.deliveredVolumeGallons,
+    });
+  }
+
+  order.quantityGallonsRequested = order.lines.reduce((sum, l) => sum + l.quantityGallonsRequested, 0);
+  order.quantityGallonsDelivered = order.lines.reduce((sum, l) => sum + (l.quantityGallonsDelivered ?? 0), 0);
+  order.updatedAt = createdAt;
+  if (poNumber && !order.jobberPoNumber) order.jobberPoNumber = poNumber;
+  return order;
+}
+
+function buildCanonicalOrders(_sites: SiteSummary[], tanks: Tank[], fuelOrders: FuelOrder[]): CanonOrder[] { // _sites is unused
   return fuelOrders.map((o) => {
     const lines = o.lines.map((line) => {
       const siteTanks = tanks.filter((t) => t.siteId === o.siteId && t.gradeCode === line.gradeCode);
@@ -213,6 +866,7 @@ function buildCanonicalOrders(): CanonOrder[] {
       return { tankId, quantityGallonsRequested: line.requestedGallons };
     });
     const firstTank = lines[0]?.tankId;
+    const created = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     return {
       id: o.id,
       orderNumber: o.id,
@@ -221,8 +875,9 @@ function buildCanonicalOrders(): CanonOrder[] {
       jobberId: o.supplierId,
       status: mapOrderStatus(o.status),
       quantityGallonsRequested: lines.reduce((sum, l) => sum + l.quantityGallonsRequested, 0),
-      createdAt: o.createdAt,
-      updatedAt: o.createdAt,
+      createdAt: created,
+      updatedAt: created,
+      updatedBy: 'System',
       ruleTriggered: false,
       jobberPoNumber: o.lines.length ? `PO-${o.id}` : undefined,
       lines,
@@ -230,634 +885,14 @@ function buildCanonicalOrders(): CanonOrder[] {
   });
 }
 
-let canonicalOrders: CanonOrder[] = [];
-let canonicalTickets: CanonTicket[] = [];
-let tankOverrides: Record<
-  string,
-  {
-    capacityGallons?: number;
-    targetFillGallons?: number;
-    alertThresholds?: { lowPercent?: number; criticalPercent?: number };
-  }
-> = {};
-
-let atgSeeded = false;
-function ensureAtgSeeded() {
-  if (atgSeeded) return;
-  const seededSites = buildCanonicalSites();
-  const seededTanks = seededSites.flatMap((s) => s.tanks || []);
-  seedAtgEventsForLast30Days(seededSites, seededTanks);
-  atgSeeded = true;
-}
-
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
-
-let mockUser: User = {
-  id: 'user-1',
-  email: 'owner@example.com',
-  name: 'Station Owner',
-};
-
-let userProfile: UserProfile = {
-  id: 'user-1',
-  companyName: 'FuelSense Pilot Stores',
-  contactName: 'Station Owner',
-  email: 'owner@example.com',
-  phone: '+1 (555) 222-7777',
-  notes: 'Prefers email first; SMS for critical issues.',
-};
-
-let sites: SiteSummary[] = [
-  {
-    id: 'site-101',
-    name: 'Quick Stop Market',
-    address: '1200 Market St',
-    city: 'Nashville, TN',
-    status: 'ATTENTION',
-    currentDailyVarianceGallons: -42,
-    currentDailyVarianceValue: -147,
-    openAlertCount: 3,
-    lowestTankPercent: 18,
-  },
-  {
-    id: 'site-202',
-    name: 'Lakeside Fuel',
-    address: '4557 Lake Ave',
-    city: 'Memphis, TN',
-    status: 'HEALTHY',
-    currentDailyVarianceGallons: -8,
-    currentDailyVarianceValue: -28,
-    openAlertCount: 1,
-    lowestTankPercent: 33,
-  },
-  {
-    id: 'site-303',
-    name: 'Ridgeview Gas & Go',
-    address: '7824 Ridge Rd',
-    city: 'Knoxville, TN',
-    status: 'CRITICAL',
-    currentDailyVarianceGallons: -65,
-    currentDailyVarianceValue: -228,
-    openAlertCount: 4,
-    lowestTankPercent: 9,
-  },
-];
-
-let tanks: Tank[] = [
-  {
-    id: 'tank-101-1',
-    siteId: 'site-101',
-    name: 'Regular 87',
-    gradeCode: 'REG',
-    capacityGallons: 12000,
-    currentGallons: 3600,
-    waterLevelInches: 0.3,
-    temperatureC: 18,
-    status: 'LOW',
-  },
-  {
-    id: 'tank-101-2',
-    siteId: 'site-101',
-    name: 'Premium 93',
-    gradeCode: 'PREM',
-    capacityGallons: 8000,
-    currentGallons: 5200,
-    waterLevelInches: 0.1,
-    temperatureC: 19,
-    status: 'OK',
-  },
-  {
-    id: 'tank-101-4',
-    siteId: 'site-101',
-    name: 'Midgrade 89',
-    gradeCode: 'MID',
-    capacityGallons: 7000,
-    currentGallons: 3600,
-    waterLevelInches: 0.12,
-    temperatureC: 19,
-    status: 'LOW',
-  },
-  {
-    id: 'tank-101-3',
-    siteId: 'site-101',
-    name: 'Diesel',
-    gradeCode: 'DSL',
-    capacityGallons: 10000,
-    currentGallons: 7500,
-    waterLevelInches: 0.6,
-    temperatureC: 16,
-    status: 'WATER',
-  },
-  {
-    id: 'tank-202-1',
-    siteId: 'site-202',
-    name: 'Regular 87',
-    gradeCode: 'REG',
-    capacityGallons: 10000,
-    currentGallons: 6200,
-    waterLevelInches: 0.05,
-    temperatureC: 20,
-    status: 'OK',
-  },
-  {
-    id: 'tank-202-2',
-    siteId: 'site-202',
-    name: 'Diesel',
-    gradeCode: 'DSL',
-    capacityGallons: 9000,
-    currentGallons: 3000,
-    waterLevelInches: 0.2,
-    temperatureC: 21,
-    status: 'CRITICAL',
-  },
-  {
-    id: 'tank-202-3',
-    siteId: 'site-202',
-    name: 'Premium 93',
-    gradeCode: 'PREM',
-    capacityGallons: 7000,
-    currentGallons: 4200,
-    waterLevelInches: 0.08,
-    temperatureC: 20,
-    status: 'OK',
-  },
-  {
-    id: 'tank-202-4',
-    siteId: 'site-202',
-    name: 'Midgrade 89',
-    gradeCode: 'MID',
-    capacityGallons: 6500,
-    currentGallons: 3100,
-    waterLevelInches: 0.1,
-    temperatureC: 20,
-    status: 'LOW',
-  },
-  {
-    id: 'tank-303-1',
-    siteId: 'site-303',
-    name: 'Regular 87',
-    gradeCode: 'REG',
-    capacityGallons: 12000,
-    currentGallons: 1900,
-    waterLevelInches: 0.4,
-    temperatureC: 17,
-    status: 'CRITICAL',
-  },
-  {
-    id: 'tank-303-2',
-    siteId: 'site-303',
-    name: 'Premium 93',
-    gradeCode: 'PREM',
-    capacityGallons: 8000,
-    currentGallons: 2100,
-    waterLevelInches: 0.2,
-    temperatureC: 17,
-    status: 'LOW',
-  },
-  {
-    id: 'tank-303-3',
-    siteId: 'site-303',
-    name: 'Diesel',
-    gradeCode: 'DSL',
-    capacityGallons: 9000,
-    currentGallons: 3100,
-    waterLevelInches: 0.25,
-    temperatureC: 17,
-    status: 'LOW',
-  },
-  {
-    id: 'tank-303-4',
-    siteId: 'site-303',
-    name: 'Midgrade 89',
-    gradeCode: 'MID',
-    capacityGallons: 7000,
-    currentGallons: 2800,
-    waterLevelInches: 0.18,
-    temperatureC: 17,
-    status: 'CRITICAL',
-  },
-];
-
-let alerts: Alert[] = [
-  {
-    id: 'alert-1',
-    siteId: 'site-101',
-    timestamp: new Date().toISOString(),
-    severity: 'CRITICAL',
-    type: 'WATER_DETECTED',
-    message: 'Water detected in Diesel tank above threshold',
-    isOpen: true,
-  },
-  {
-    id: 'alert-2',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    severity: 'WARNING',
-    type: 'RUNOUT_RISK',
-    message: 'Regular 87 predicted to hit 10% in 9 hours',
-    isOpen: true,
-  },
-  {
-    id: 'alert-3',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    severity: 'INFO',
-    type: 'ATG_POS_MISMATCH',
-    message: 'ATG vs POS variance exceeded 15 gallons',
-    isOpen: true,
-  },
-  {
-    id: 'alert-4',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    severity: 'CRITICAL',
-    type: 'POSSIBLE_THEFT',
-    message: 'Unexplained drawdown detected overnight',
-    isOpen: true,
-  },
-  {
-    id: 'alert-5',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    severity: 'WARNING',
-    type: 'SHORT_DELIVERY',
-    message: 'Short delivery suspected on last drop',
-    isOpen: false,
-  },
-];
-
-let deliveries: DeliveryRecord[] = [
-  {
-    id: 'del-1',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 1000 * 60 * 220).toISOString(),
-    supplier: 'Phillips 66',
-    gradeCode: 'REG',
-    bolGallons: 6800,
-    atgReceivedGallons: 6650,
-    status: 'OVER',
-    orderNumber: 'ORD-seed-101',
-  },
-  {
-    id: 'del-2',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 1000 * 60 * 540).toISOString(),
-    supplier: 'BP',
-    gradeCode: 'DSL',
-    bolGallons: 7200,
-    atgReceivedGallons: 7200,
-    status: 'OK',
-    orderNumber: 'ORD-seed-101',
-  },
-  {
-    id: 'del-3',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 80).toISOString(),
-    supplier: 'Marathon',
-    gradeCode: 'REG',
-    bolGallons: 5000,
-    atgReceivedGallons: 4885,
-    status: 'SHORT',
-    orderNumber: 'ORD-seed-202',
-  },
-  {
-    id: 'del-4',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 800).toISOString(),
-    supplier: 'Shell',
-    gradeCode: 'DSL',
-    bolGallons: 6000,
-    atgReceivedGallons: 5980,
-    status: 'OK',
-    orderNumber: 'ORD-seed-202',
-  },
-  {
-    id: 'del-4b',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 140).toISOString(),
-    supplier: 'Shell',
-    gradeCode: 'PREM',
-    bolGallons: 4500,
-    atgReceivedGallons: 4420,
-    status: 'OVER',
-    orderNumber: 'ORD-seed-202',
-  },
-  {
-    id: 'del-4c',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 320).toISOString(),
-    supplier: 'BP',
-    gradeCode: 'MID',
-    bolGallons: 3800,
-    atgReceivedGallons: 3700,
-    status: 'OK',
-    orderNumber: 'ORD-seed-202',
-  },
-  {
-    id: 'del-5',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    supplier: 'BP',
-    gradeCode: 'REG',
-    bolGallons: 6500,
-    atgReceivedGallons: 6320,
-    status: 'SHORT',
-    orderNumber: 'ORD-seed-303',
-  },
-  {
-    id: 'del-6',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 960).toISOString(),
-    supplier: 'Marathon',
-    gradeCode: 'PREM',
-    bolGallons: 4200,
-    atgReceivedGallons: 4100,
-    status: 'OK',
-  },
-  {
-    id: 'del-7',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 250).toISOString(),
-    supplier: 'Exxon',
-    gradeCode: 'DSL',
-    bolGallons: 5200,
-    atgReceivedGallons: 5000,
-    status: 'SHORT',
-  },
-  {
-    id: 'del-8',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 410).toISOString(),
-    supplier: 'Chevron',
-    gradeCode: 'MID',
-    bolGallons: 3600,
-    atgReceivedGallons: 3500,
-    status: 'SHORT',
-  },
-];
-
-let varianceEvents: VarianceEvent[] = [
-  {
-    id: 'var-1',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    gradeCode: 'REG',
-    expectedGallons: 500,
-    actualGallons: 470,
-    varianceGallons: -30,
-    severity: 'WARNING',
-    note: 'Pump calibration check suggested',
-  },
-  {
-    id: 'var-2',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-    gradeCode: 'DSL',
-    expectedGallons: 400,
-    actualGallons: 320,
-    varianceGallons: -80,
-    severity: 'CRITICAL',
-    note: 'Possible water displacement',
-  },
-  {
-    id: 'var-3',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 70).toISOString(),
-    gradeCode: 'REG',
-    expectedGallons: 600,
-    actualGallons: 592,
-    varianceGallons: -8,
-    severity: 'INFO',
-  },
-  {
-    id: 'var-3c',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 85).toISOString(),
-    gradeCode: 'MID',
-    expectedGallons: 500,
-    actualGallons: 470,
-    varianceGallons: -30,
-    severity: 'WARNING',
-    note: 'Midgrade variance during afternoon shift',
-  },
-  {
-    id: 'var-3b',
-    siteId: 'site-202',
-    timestamp: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
-    gradeCode: 'PREM',
-    expectedGallons: 420,
-    actualGallons: 380,
-    varianceGallons: -40,
-    severity: 'WARNING',
-    note: 'Premium loss observed during evening shift',
-  },
-  {
-    id: 'var-4',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 40).toISOString(),
-    gradeCode: 'REG',
-    expectedGallons: 700,
-    actualGallons: 630,
-    varianceGallons: -70,
-    severity: 'CRITICAL',
-  },
-  {
-    id: 'var-5',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
-    gradeCode: 'PREM',
-    expectedGallons: 200,
-    actualGallons: 190,
-    varianceGallons: -10,
-    severity: 'WARNING',
-  },
-  {
-    id: 'var-6',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    gradeCode: 'DSL',
-    expectedGallons: 350,
-    actualGallons: 310,
-    varianceGallons: -40,
-    severity: 'WARNING',
-    note: 'Diesel drawdown during morning deliveries',
-  },
-  {
-    id: 'var-7',
-    siteId: 'site-303',
-    timestamp: new Date(Date.now() - 1000 * 60 * 62).toISOString(),
-    gradeCode: 'MID',
-    expectedGallons: 420,
-    actualGallons: 390,
-    varianceGallons: -30,
-    severity: 'WARNING',
-    note: 'Midgrade leak suspected',
-  },
-  // Older events to differentiate 7d vs 30d badges
-  {
-    id: 'var-8',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    gradeCode: 'REG',
-    expectedGallons: 1200,
-    actualGallons: 1150,
-    varianceGallons: -50,
-    severity: 'WARNING',
-    note: 'Week-old variance for badge testing',
-  },
-  {
-    id: 'var-9',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    gradeCode: 'REG',
-    expectedGallons: 900,
-    actualGallons: 860,
-    varianceGallons: -40,
-    severity: 'INFO',
-    note: 'Mid-month variance for badge testing',
-  },
-  {
-    id: 'var-10',
-    siteId: 'site-101',
-    timestamp: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-    gradeCode: 'DSL',
-    expectedGallons: 800,
-    actualGallons: 760,
-    varianceGallons: -40,
-    severity: 'WARNING',
-    note: 'Diesel variance outside 7d but inside 30d',
-  },
-];
-
-let settings: SiteSettings[] = [
-  {
-    siteId: 'site-101',
-    lowTankPercent: 20,
-    criticalTankPercent: 10,
-    dailyVarianceAlertGallons: 60,
-    alertsEnabled: true,
-    notifyByEmail: true,
-    notifyBySms: true,
-    preferredComm: 'EMAIL',
-    alertFrequencyCritical: 'IMMEDIATE',
-    alertFrequencyWarning: 'HOURLY',
-    alertFrequencyInfo: 'DAILY',
-    jobberId: 'job-1',
-    jobberContactName: 'T. Reeves',
-    jobberPhone: '+1 (555) 201-0101',
-    jobberEmail: 'orders@marathonjobber.com',
-    serviceCompanyId: 'svc-1',
-    serviceContactName: 'Ana Patel',
-    servicePhone: '+1 (555) 200-1111',
-    serviceEmail: 'dispatch@bluetech.com',
-    backOfficeProvider: 'MODISOFT',
-    backOfficeUsername: 'quickstop-owner',
-    backOfficePassword: 'password123',
-    defaultLoadRegGallons: 8000,
-    defaultLoadPremGallons: 4500,
-    defaultLoadDslGallons: 6000,
-    defaultLoadMidGallons: 5000,
-    capacityNotes: 'Reg 12k, Prem 8k, Diesel 10k',
-    tankTypePolicy: 'ALLOW_VIRTUAL',
-    virtualBlendRatio: '60/40 (Prem/Reg)',
-  },
-  {
-    siteId: 'site-202',
-    lowTankPercent: 18,
-    criticalTankPercent: 8,
-    dailyVarianceAlertGallons: 50,
-    alertsEnabled: true,
-    notifyByEmail: true,
-    notifyBySms: false,
-    preferredComm: 'SMS',
-    alertFrequencyCritical: 'IMMEDIATE',
-    alertFrequencyWarning: 'HOURLY',
-    alertFrequencyInfo: 'DAILY',
-    jobberId: 'job-2',
-    jobberContactName: 'L. Parker',
-    jobberPhone: '+1 (555) 202-0202',
-    jobberEmail: 'dispatch@shelljobber.com',
-    serviceCompanyId: 'svc-2',
-    serviceContactName: 'Luis Gomez',
-    servicePhone: '+1 (555) 333-4444',
-    serviceEmail: 'support@pumpcare.com',
-    backOfficeProvider: 'C_STORE',
-    backOfficeUsername: 'lakeside-admin',
-    backOfficePassword: 'welcome!',
-    defaultLoadRegGallons: 7000,
-    defaultLoadPremGallons: 4500,
-    defaultLoadDslGallons: 5500,
-    defaultLoadMidGallons: 5000,
-    capacityNotes: 'Virtual mid auto-calculated',
-    tankTypePolicy: 'ALLOW_VIRTUAL',
-    virtualBlendRatio: '60/40 (Prem/Reg)',
-  },
-  {
-    siteId: 'site-303',
-    lowTankPercent: 25,
-    criticalTankPercent: 12,
-    dailyVarianceAlertGallons: 75,
-    alertsEnabled: true,
-    notifyByEmail: true,
-    notifyBySms: true,
-    preferredComm: 'CALL',
-    alertFrequencyCritical: 'IMMEDIATE',
-    alertFrequencyWarning: 'HOURLY',
-    alertFrequencyInfo: 'DAILY',
-    jobberId: 'job-1',
-    jobberContactName: 'T. Reeves',
-    jobberPhone: '+1 (555) 201-0101',
-    jobberEmail: 'orders@marathonjobber.com',
-    serviceCompanyId: 'svc-3',
-    serviceContactName: 'Kayla Chen',
-    servicePhone: '+1 (555) 888-9999',
-    serviceEmail: 'service@fuelsafe.io',
-    backOfficeProvider: 'MODISOFT',
-    backOfficeUsername: 'ridgeview-manager',
-    backOfficePassword: 'fuel-safe-303',
-    defaultLoadRegGallons: 7500,
-    defaultLoadPremGallons: 4200,
-    defaultLoadDslGallons: 6000,
-    defaultLoadMidGallons: 4800,
-    capacityNotes: 'Prem 8k, Diesel 9k',
-    tankTypePolicy: 'ALLOW_VIRTUAL',
-    virtualBlendRatio: '60/40 (Prem/Reg)',
-  },
-];
-
-function computeLowestTankPercent(siteId: string): number {
-  const siteTanks = tanks.filter((t) => t.siteId === siteId && t.gradeCode !== 'MID');
-  if (!siteTanks.length) return 0;
-  const percents = siteTanks.map((t) => (t.currentGallons / t.capacityGallons) * 100);
-  return Math.round(Math.min(...percents));
-}
-
-const MID_PREM_RATIO = 0.6;
-const MID_REG_RATIO = 0.4;
-
-function getPhysicalSiteTanks(siteId: string): Tank[] {
-  return tanks.filter((t) => t.siteId === siteId && t.gradeCode !== 'MID');
-}
-
-function computeBlendedGallons(regGallons: number, premGallons: number): number {
-  const potentialFromReg = regGallons / MID_REG_RATIO;
-  const potentialFromPrem = premGallons / MID_PREM_RATIO;
-  return Math.round(Math.min(potentialFromReg, potentialFromPrem));
-}
-
-function withComputedSummary(site: SiteSummary): SiteSummary {
-  const live = deriveLiveStatus(site.id);
-  const openCount = live.alerts.filter((a) => a.isOpen).length;
-  return { ...site, lowestTankPercent: computeLowestTankPercent(site.id), openAlertCount: openCount };
-}
-
 function deriveMidTank(siteId: string): Tank | null {
-  const reg = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'REG');
-  const prem = tanks.find((t) => t.siteId === siteId && t.gradeCode === 'PREM');
-  if (!reg || !prem) return null;
-  const capacityGallons = computeBlendedGallons(reg.capacityGallons, prem.capacityGallons);
-  const currentGallons = computeBlendedGallons(reg.currentGallons, prem.currentGallons);
-  const temperatureC = Math.round(((reg.temperatureC + prem.temperatureC) / 2) * 10) / 10;
+  const data = getInitialMockData();
+  const reg = data.tanks.find((t) => t.siteId === siteId && t.gradeCode === 'REG');
+  const sup = data.tanks.find((t) => t.siteId === siteId && t.gradeCode === 'SUP');
+  if (!reg || !sup) return null;
+  const capacityGallons = computeBlendedGallons(reg.capacityGallons, sup.capacityGallons);
+  const currentGallons = computeBlendedGallons(reg.currentGallons, sup.currentGallons);
+  const temperatureC = Math.round(((reg.temperatureC + sup.temperatureC) / 2) * 10) / 10;
   return {
     id: `mid-${siteId}`,
     siteId,
@@ -869,6 +904,162 @@ function deriveMidTank(siteId: string): Tank | null {
     temperatureC,
     status: 'OK',
   };
+}
+
+function computeBlendedGallons(regGallons: number, SUPGallons: number): number {
+  const MID_SUP_RATIO = 0.6;
+  const MID_REG_RATIO = 0.4;
+  const potentialFromReg = regGallons / MID_REG_RATIO;
+  const potentialFromSUP = SUPGallons / MID_SUP_RATIO;
+  return Math.round(Math.min(potentialFromReg, potentialFromSUP));
+}
+
+function getPhysicalSiteTanks(siteId: string): Tank[] {
+  const data = getInitialMockData();
+  return data.tanks.filter((t) => t.siteId === siteId && t.gradeCode !== 'MID');
+}
+
+function withComputedSummary(site: SiteSummary): SiteSummary {
+  const live = deriveLiveStatus(site.id);
+  const openCount = live.alerts.filter((a) => a.isOpen).length;
+  return { ...site, lowestTankPercent: computeLowestTankPercent(site.id), openAlertCount: openCount };
+}
+
+function computeLowestTankPercent(siteId: string): number {
+  const data = getInitialMockData();
+  const siteTanks = data.tanks.filter((t) => t.siteId === siteId && t.gradeCode !== 'MID');
+  if (!siteTanks.length) return 0;
+  const percents = siteTanks.map((t) => (t.currentGallons / t.capacityGallons) * 100);
+  return Math.round(Math.min(...percents));
+}
+
+function deriveSalesVariance(siteId: string) {
+  const invEvents = getAtgEvents({ siteId, type: 'INVENTORY', limit: 50000 }).events as AtgInventoryEvent[];
+  const grouped = new Map<string, AtgInventoryEvent[]>();
+  invEvents.forEach((evt) => {
+    if (!evt.tankId) return;
+    if (!grouped.has(evt.tankId)) grouped.set(evt.tankId, []);
+    grouped.get(evt.tankId)!.push(evt);
+  });
+  grouped.forEach((list) => list.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)));
+
+  const salesEvents: VarianceEvent[] = [];
+  grouped.forEach((list, tankId) => {
+    const gradeCode = normalizeGradeCode(getGradeCodeForTank(tankId, siteId));
+    for (let i = 1; i < list.length; i++) {
+      const prev = list[i - 1];
+      const curr = list[i];
+      const delta = curr.volumeGallons - prev.volumeGallons;
+      if (delta < 0) {
+        salesEvents.push({
+          id: `sale-${tankId}-${i}`,
+          siteId,
+          timestamp: curr.timestamp,
+          gradeCode,
+          expectedGallons: prev.volumeGallons,
+          actualGallons: curr.volumeGallons,
+          varianceGallons: delta,
+          severity: 'INFO',
+          note: 'ATG volume decrease (sale) detected',
+        });
+      }
+    }
+  });
+
+  salesEvents.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  // const now = Date.now(); // Unused
+  const todayStr = new Date().toDateString();
+  const todayGallons = salesEvents
+    .filter((e) => new Date(e.timestamp).toDateString() === todayStr)
+    .reduce((sum, e) => sum + e.varianceGallons, 0);
+  const last7Gallons = salesEvents
+    .filter((e) => Date.now() - Date.parse(e.timestamp) <= 7 * 24 * 60 * 60 * 1000)
+    .reduce((sum, e) => sum + e.varianceGallons, 0);
+
+  return {
+    today: { gallons: todayGallons, value: Math.abs(todayGallons) * 3.5 },
+    last7Days: { gallons: last7Gallons, value: Math.abs(last7Gallons) * 3.5 },
+    events: salesEvents,
+  };
+}
+
+function deriveSalesSeries(siteId: string) {
+  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - ninetyDaysMs;
+  const invEvents = getAtgEvents({ siteId, type: 'INVENTORY', limit: 200000 }).events as AtgInventoryEvent[];
+  const grouped = new Map<string, AtgInventoryEvent[]>();
+  invEvents.forEach((evt) => {
+    if (!evt.tankId) return;
+    if (Date.parse(evt.timestamp) < cutoff) return;
+    if (!grouped.has(evt.tankId)) grouped.set(evt.tankId, []);
+    grouped.get(evt.tankId)!.push(evt);
+  });
+  grouped.forEach((list) => list.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)));
+
+  const byGrade = new Map<
+    string,
+    {
+      gradeCode: string;
+      buckets: Map<string, number>;
+      lastReadingAt?: string;
+    }
+  >();
+
+  grouped.forEach((list, tankId) => {
+    const gradeCode = normalizeGradeCode(getGradeCodeForTank(tankId, siteId));
+    if (!byGrade.has(gradeCode)) byGrade.set(gradeCode, { gradeCode, buckets: new Map(), lastReadingAt: undefined });
+    const target = byGrade.get(gradeCode)!;
+    list.forEach((evt) => {
+      const ts = evt.timestamp;
+      if (!target.lastReadingAt || Date.parse(ts) > Date.parse(target.lastReadingAt)) {
+        target.lastReadingAt = ts;
+      }
+    });
+    for (let i = 1; i < list.length; i++) {
+      const prev = list[i - 1];
+      const curr = list[i];
+      const delta = prev.volumeGallons - curr.volumeGallons;
+      if (delta > 0) {
+        const bucketMs = Math.floor(Date.parse(curr.timestamp) / (60 * 60 * 1000)) * 60 * 60 * 1000;
+        const bucketKey = new Date(bucketMs).toISOString();
+        target.buckets.set(bucketKey, (target.buckets.get(bucketKey) || 0) + delta);
+      }
+    }
+  });
+
+  const series = Array.from(byGrade.values()).map((g) => {
+    const points = Array.from(g.buckets.entries())
+      .map(([timestamp, gallons]) => ({ timestamp, gallons }))
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+    // Bollinger bands (14-period) per point
+    const window = 14;
+    const withBands = points.map((pt, idx) => {
+      const start = Math.max(0, idx - window + 1);
+      const windowSlice = points.slice(start, idx + 1);
+      if (windowSlice.length < window) {
+        return { ...pt, middle: undefined, upper: undefined, lower: undefined };
+      }
+      const mean = windowSlice.reduce((sum, p) => sum + p.gallons, 0) / windowSlice.length;
+      const variance =
+        windowSlice.reduce((sum, p) => sum + Math.pow(p.gallons - mean, 2), 0) / windowSlice.length;
+      const std = Math.sqrt(variance);
+      return {
+        ...pt,
+        middle: mean,
+        upper: mean + 2 * std,
+        lower: Math.max(0, mean - 2 * std),
+      };
+    });
+
+    return {
+      gradeCode: g.gradeCode,
+      points: withBands,
+      lastReadingAt: g.lastReadingAt,
+    };
+  });
+
+  return { updatedAt: new Date().toISOString(), windowDays: 90, series };
 }
 
 function computeRunoutForSite(siteId: string): RunoutPrediction[] {
@@ -897,15 +1088,15 @@ function computeRunoutForSite(siteId: string): RunoutPrediction[] {
   });
 
   const regRunout = preds.find((p) => p.gradeCode === 'REG');
-  const premRunout = preds.find((p) => p.gradeCode === 'PREM');
+  const SUPRunout = preds.find((p) => p.gradeCode === 'SUP');
   const midTank = deriveMidTank(siteId);
-  if (midTank && regRunout && premRunout) {
+  if (midTank && regRunout && SUPRunout) {
     preds.push({
       siteId,
       tankId: midTank.id,
       gradeCode: 'MID',
-      hoursToTenPercent: Math.round(regRunout.hoursToTenPercent * 0.4 + premRunout.hoursToTenPercent * 0.6),
-      hoursToEmpty: Math.round(regRunout.hoursToEmpty * 0.4 + premRunout.hoursToEmpty * 0.6),
+      hoursToTenPercent: Math.round(regRunout.hoursToTenPercent * 0.4 + SUPRunout.hoursToTenPercent * 0.6),
+      hoursToEmpty: Math.round(regRunout.hoursToEmpty * 0.4 + SUPRunout.hoursToEmpty * 0.6),
     });
   }
 
@@ -970,7 +1161,7 @@ function deriveLiveStatus(siteId: string) {
         id: `alarm-${al.id}`,
         siteId,
         severity: 'CRITICAL',
-        type: 'ATG_ALARM' as any,
+        type: 'ATG_ALARM', // Corrected type
         message: al.humanReadable,
         isOpen: true,
         timestamp: al.timestamp,
@@ -986,143 +1177,108 @@ function deriveLiveStatus(siteId: string) {
   };
 }
 
-let serviceCompanies: ServiceCompany[] = [
-  {
-    id: 'svc-1',
-    siteId: 'site-101',
-    name: 'BlueTech Services',
-    contactName: 'Ana Patel',
-    phone: '+1 (555) 200-1111',
-    email: 'dispatch@bluetech.com',
-    notes: '24/7 dispatch',
-    portal: { url: 'https://portal.bluetech.com', username: 'bluetech-user', password: 'pass123' },
-    communication: { preferredChannel: 'PORTAL' },
-  },
-  {
-    id: 'svc-2',
-    siteId: 'site-202',
-    name: 'PumpCare Pros',
-    contactName: 'Luis Gomez',
-    phone: '+1 (555) 333-4444',
-    email: 'support@pumpcare.com',
-    notes: 'Prefers morning visits',
-    portal: { url: 'https://portal.pumpcare.com', username: 'pump-user', password: 'welcome123' },
-    communication: { preferredChannel: 'CALL' },
-  },
-  {
-    id: 'svc-3',
-    siteId: 'site-303',
-    name: 'FuelSafe Technicians',
-    contactName: 'Kayla Chen',
-    phone: '+1 (555) 888-9999',
-    email: 'service@fuelsafe.io',
-    notes: 'Water remediation specialists',
-    portal: { url: 'https://portal.fuelsafe.io', username: 'fuelsafe-user', password: 'fs-safe' },
-    communication: { preferredChannel: 'EMAIL' },
-  },
-];
+function buildOrderSuggestion(siteId: string) {
+  const siteTanks = buildCanonicalTanks(siteId);
 
-let serviceTickets: ServiceTicket[] = [];
+  const suggestedLines = siteTanks.filter(t => !t.isVirtual).map(t => {
+    const currentGallons = t.currentVolumeGallons ?? 0;
+    const capacityGallons = t.capacityGallons ?? 0;
+    const percentFull = (currentGallons / capacityGallons) * 100;
 
-let jobbers: Jobber[] = [
-  {
-    id: 'job-1',
-    name: 'Marathon Jobber',
-    contactName: 'T. Reeves',
-    phone: '+1 (555) 201-0101',
-    email: 'orders@marathonjobber.com',
-    portal: { url: 'https://portal.marathonjobber.com', username: 'marathon-user', password: 'pass123' },
-    communication: { preferredChannel: 'PORTAL' },
-  },
-  {
-    id: 'job-2',
-    name: 'Shell Jobber',
-    contactName: 'L. Parker',
-    phone: '+1 (555) 202-0202',
-    email: 'dispatch@shelljobber.com',
-    portal: { url: 'https://portal.shelljobber.com', username: 'shell-user', password: 'welcome123' },
-    communication: { preferredChannel: 'CALL' },
-  },
-];
+    // Simple runout prediction (for demo purposes)
+    const runoutPred = computeRunoutForSite(siteId).find(p => p.tankId === t.id);
+    const estHoursToTenPercent = runoutPred?.hoursToTenPercent ?? Infinity;
 
-let managerContacts: ManagerContact[] = [
-  { id: 'mgr-101-1', siteId: 'site-101', name: 'Jamie Flores', role: 'Store Manager', email: 'jamie@quickstop.com', phone: '+1 (555) 410-1122', notifyCritical: 'IMMEDIATE', notifyWarning: 'HOURLY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: true, notifyCall: false },
-  { id: 'mgr-101-2', siteId: 'site-101', name: 'Arun Shah', role: 'Owner', email: 'arun@quickstop.com', phone: '+1 (555) 410-7788', notifyCritical: 'IMMEDIATE', notifyWarning: 'DAILY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: false, notifyCall: true },
-  { id: 'mgr-202-1', siteId: 'site-202', name: 'Kelly Wu', role: 'Store Manager', email: 'kelly@lakesidefuel.com', phone: '+1 (555) 620-3344', notifyCritical: 'IMMEDIATE', notifyWarning: 'HOURLY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: true, notifyCall: false },
-  { id: 'mgr-303-1', siteId: 'site-303', name: 'Samir Patel', role: 'Store Manager', email: 'samir@ridgeviewgas.com', phone: '+1 (555) 920-4455', notifyCritical: 'IMMEDIATE', notifyWarning: 'HOURLY', notifyInfo: 'DAILY', notifyEmail: true, notifySms: true, notifyCall: true },
-];
+    // Suggest ordering if below a certain threshold (e.g., 50%) or if runout is imminent
+    let suggestedOrderGallons = 0;
+    if (percentFull < 50 || estHoursToTenPercent < 48) {
+        // Suggest filling to 90% capacity as an example
+        suggestedOrderGallons = Math.max(0, Math.floor(capacityGallons * 0.9 - currentGallons));
+    }
 
-let suppliers: Supplier[] = [
-  {
-    id: 'sup-1',
-    name: 'Lone Star Fuel Supply',
-    contactName: 'Mike Thompson',
-    phone: '+1 (555) 123-4567',
-    email: 'mike@lonestarfuel.com',
-  },
-  {
-    id: 'sup-2',
-    name: 'Gulf Coast Petroleum',
-    contactName: 'Sarah Lee',
-    phone: '+1 (555) 987-6543',
-    email: 'slee@gulfcoastpetro.com',
-  },
-];
+    return {
+      gradeCode: t.productType, // Using productType as gradeCode for suggestion
+      currentGallons,
+      capacityGallons,
+      percentFull: parseFloat(percentFull.toFixed(1)),
+      estHoursToTenPercent,
+      suggestedOrderGallons,
+    };
+  });
 
-let fuelOrders: FuelOrder[] = [
-  {
-    id: 'ord-1',
-    siteId: 'site-101',
-    supplierId: 'sup-1',
-    status: 'CONFIRMED',
-    createdAt: new Date().toISOString(),
-    requestedDeliveryWindowStart: new Date().toISOString(),
-    requestedDeliveryWindowEnd: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-    notes: 'Night delivery preferred',
-    lines: [
-      { id: 'line-1', gradeCode: 'REG', requestedGallons: 6000 },
-      { id: 'line-2', gradeCode: 'DSL', requestedGallons: 3000 },
-    ],
-  },
-];
-
-canonicalOrders = buildCanonicalOrders();
-
-function buildOrderSuggestion(siteId: string): OrderSuggestion {
-  const siteTanks = getPhysicalSiteTanks(siteId);
-  const mid = deriveMidTank(siteId);
-  const allTanks = mid ? [...siteTanks, mid] : siteTanks;
-  const runouts = computeRunoutForSite(siteId);
   return {
     siteId,
     generatedAt: new Date().toISOString(),
-    suggestedLines: allTanks.map((t) => {
-      const percentFull = (t.currentGallons / t.capacityGallons) * 100;
-      const estHoursToTenPercent = runouts.find((r) => r.tankId === t.id)?.hoursToTenPercent ?? 24;
-      const suggestedOrderGallons = Math.max(0, t.capacityGallons - t.currentGallons - 100);
-      return {
-        gradeCode: t.gradeCode,
-        currentGallons: t.currentGallons,
-        capacityGallons: t.capacityGallons,
-        percentFull,
-        estHoursToTenPercent,
-        suggestedOrderGallons,
-      };
-    }),
+    suggestedLines,
   };
-}
-
-function delay<T>(value: T, ms = 200 + Math.random() * 300): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
 }
 
 export async function mockRequest<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
   ensureAtgSeeded();
-  if (path.startsWith('/api/')) {
-    // Canonical API surface
-    if (method === 'GET' && path === '/api/sites') {
-      return delay(buildCanonicalSites() as unknown as T);
-    }
+  const data = getInitialMockData();
+    if (path.startsWith('/api/')) {
+      // Canonical API surface
+      if (method === 'POST' && path === '/api/deliveries/link') {
+        const payload = body as { deliveryId: string; orderNumber?: string; bolGallons?: number; poNumber?: string; jobberId?: string };
+        if (!payload.deliveryId) throw new Error('deliveryId is required');
+        const evt = findDeliveryById(payload.deliveryId);
+        if (!evt) throw new Error('Delivery event not found');
+        const gradeForLink = normalizeGradeCode(evt.productCode, evt.tankId || undefined, evt.siteId);
+        const poForLink = payload.poNumber;
+        if (poForLink) {
+          for (const [otherId, link] of Object.entries(data.deliveryLinks)) {
+            if (otherId === payload.deliveryId) continue;
+            if (link.poNumber !== poForLink) continue;
+            const otherEvt = findDeliveryById(otherId);
+            if (!otherEvt) continue;
+            const otherGrade = normalizeGradeCode(otherEvt.productCode, otherEvt.tankId || undefined, otherEvt.siteId);
+            if (otherGrade === gradeForLink) {
+              throw new Error('This PO is already used for another delivery of the same product. Use a different PO or unlink first.');
+            }
+          }
+        }
+        let orderNumber = payload.orderNumber;
+        if (!orderNumber) {
+          const jobberId = payload.jobberId || data.jobbers[0]?.id || 'jobber-1';
+          const newOrder = createUnsolicitedOrderFromDelivery(
+            evt,
+            jobberId,
+            payload.bolGallons ?? evt.deliveredVolumeGallons,
+            payload.poNumber,
+            orderNumber
+          );
+          orderNumber = newOrder.orderNumber;
+        } else {
+          const jobberId = payload.jobberId || data.jobbers[0]?.id || 'jobber-1';
+        createUnsolicitedOrderFromDelivery(evt, jobberId, payload.bolGallons ?? evt.deliveredVolumeGallons, payload.poNumber, orderNumber);
+      }
+      data.deliveryLinks[payload.deliveryId] = {
+        orderNumber,
+        bolGallons: payload.bolGallons,
+        poNumber: payload.poNumber,
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'User',
+      };
+      return delay(500, { ok: true, orderNumber } as unknown as T);
+      }
+      if (method === 'POST' && path === '/api/deliveries/update-bol') {
+        const payload = body as { deliveryId: string; bolGallons: number };
+        if (!payload.deliveryId) throw new Error('deliveryId is required');
+        const existing = data.deliveryLinks[payload.deliveryId] || {};
+        data.deliveryLinks[payload.deliveryId] = {
+          ...existing,
+          bolGallons: payload.bolGallons,
+          updatedAt: new Date().toISOString(),
+          updatedBy: 'User',
+        };
+        return delay(500, { ok: true } as unknown as T);
+      }
+      if (method === 'GET' && path === '/api/content/page-headers') {
+        return delay(500, data.pageHeadersData as unknown as T);
+      }
+      if (method === 'GET' && path === '/api/sites') {
+        return delay(500, buildCanonicalSites() as unknown as T);
+      }
     const siteMatchApi = path.match(/^\/api\/sites\/([^/]+)(.*)$/);
     if (siteMatchApi) {
       const siteId = siteMatchApi[1];
@@ -1130,31 +1286,19 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
       if (method === 'GET' && (subPath === '' || subPath === '/')) {
         const site = buildCanonicalSites().find((s) => s.id === siteId);
         if (!site) throw new Error('Site not found');
-        return delay(site as unknown as T);
+        return delay(500, site as unknown as T);
       }
       if (method === 'GET' && subPath === '/variance') {
-        const siteEvents = varianceEvents.filter((v) => v.siteId === siteId);
-        const recentEvents = siteEvents.filter(
-          (v) => Date.now() - new Date(v.timestamp).getTime() <= 1000 * 60 * 60 * 24 * 7
-        );
-        const todayEvents = recentEvents.filter(
-          (v) => new Date(v.timestamp).toDateString() === new Date().toDateString()
-        );
-        const todayGallons = todayEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
-        const todayValue = todayGallons * 3.5;
-        const last7DaysGallons = recentEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
-        const last7DaysValue = last7DaysGallons * 3.5;
-        return delay(
-          {
-            today: { gallons: todayGallons, value: todayValue },
-            last7Days: { gallons: last7DaysGallons, value: last7DaysValue },
-            events: siteEvents,
-          } as unknown as T
-        );
+        const sales = deriveSalesVariance(siteId);
+        return delay(500, sales as unknown as T);
       }
       if (method === 'GET' && subPath === '/live-status') {
         const live = deriveLiveStatus(siteId);
-        return delay(live as unknown as T);
+        return delay(500, live as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/sales-series') {
+        const sales = deriveSalesSeries(siteId);
+        return delay(500, sales as unknown as T);
       }
       if (method === 'GET' && subPath === '/events') {
         const url = new URL(`http://dummy${path}`);
@@ -1165,10 +1309,14 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
         const limit = Number(url.searchParams.get('limit') || 200);
         const offset = Number(url.searchParams.get('offset') || 0);
         const result = getAtgEvents({ siteId, tankId, from, to, type, limit, offset });
-        return delay(result as unknown as T);
+        return delay(500, result as unknown as T);
       }
       if (method === 'GET' && subPath === '/tanks') {
-        return delay(buildCanonicalTanks(siteId) as unknown as T);
+        return delay(500, buildCanonicalTanks(siteId) as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/alerts') {
+        const siteAlerts = data.alerts.filter((a) => a.siteId === siteId);
+        return delay(500, siteAlerts as unknown as T);
       }
       const tankMatchApi = subPath.match(/^\/tanks\/([^/]+)$/);
         if (tankMatchApi && method === 'PUT') {
@@ -1178,51 +1326,63 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
             targetFillGallons?: number;
             alertThresholds?: { lowPercent?: number; criticalPercent?: number };
           };
-          const baseTank = tanks.find((t) => t.id === tankId && t.siteId === siteId);
+          const baseTank = data.tanks.find((t) => t.id === tankId && t.siteId === siteId);
           if (!baseTank) throw new Error('Tank not found');
-          if (!tankOverrides[tankId]) tankOverrides[tankId] = {};
+          if (!data.tankOverrides[tankId]) data.tankOverrides[tankId] = {};
           if (typeof partial.capacityGallons === 'number') {
             baseTank.capacityGallons = partial.capacityGallons;
-            tankOverrides[tankId].capacityGallons = partial.capacityGallons;
+            data.tankOverrides[tankId].capacityGallons = partial.capacityGallons;
           }
           if (typeof partial.targetFillGallons === 'number') {
-            tankOverrides[tankId].targetFillGallons = partial.targetFillGallons;
+            data.tankOverrides[tankId].targetFillGallons = partial.targetFillGallons;
           }
           if (partial.alertThresholds) {
-            tankOverrides[tankId].alertThresholds = {
-              ...tankOverrides[tankId].alertThresholds,
+            data.tankOverrides[tankId].alertThresholds = {
+              ...data.tankOverrides[tankId].alertThresholds,
               ...partial.alertThresholds,
             };
         }
         const updated = buildCanonicalTanks(siteId).find((t) => t.id === tankId);
-        return delay(updated as unknown as T);
+        return delay(500, updated as unknown as T);
       }
       if (method === 'POST' && subPath === '/sync-backoffice') {
-        const provider = settings.find((s) => s.siteId === siteId)?.backOfficeProvider ?? 'MODISOFT';
+        const provider = data.settings.find((s) => s.siteId === siteId)?.backOfficeProvider ?? 'MODISOFT';
         const payload = {
           siteId,
           provider: provider as 'MODISOFT' | 'C_STORE',
-          status: 'SUCCESS' as const,
+          status: 'QUEUED' as const,
           startedAt: new Date().toISOString(),
           message: 'Back office sync completed (mock)',
         };
-        return delay(payload as unknown as T);
+        return delay(500, payload as unknown as T);
       }
       if (method === 'GET' && subPath === '/deliveries') {
-        const siteDeliveries = deliveries.filter((d) => d.siteId === siteId);
-        return delay(siteDeliveries as unknown as T);
+        const siteDeliveries = buildDeliveryRecords(siteId);
+        return delay(500, siteDeliveries as unknown as T);
       }
       if (method === 'GET' && subPath === '/order-suggestions') {
         const suggestion = buildOrderSuggestion(siteId);
-        return delay(suggestion as unknown as T);
+        return delay(500, suggestion as unknown as T);
+      }
+      if (method === 'GET' && subPath === '/settings') {
+        const existing = data.settings.find((s) => s.siteId === siteId);
+        if (!existing) throw new Error('Site settings not found');
+        return delay(500, { ...existing } as unknown as T);
+      }
+      if (method === 'PUT' && subPath === '/settings') {
+        const payload = body as Partial<SiteSettings>;
+        const existing = data.settings.find((s) => s.siteId === siteId);
+        if (!existing) throw new Error('Site settings not found');
+        Object.assign(existing, payload);
+        return delay(500, { ...existing } as unknown as T);
       }
       if (method === 'GET' && subPath === '/service-companies') {
-        const list = serviceCompanies.filter((c) => c.siteId === siteId);
-        return delay(list as unknown as T);
+        const list = data.serviceCompanies.filter((c) => c.siteId === siteId);
+        return delay(500, list as unknown as T);
       }
       if (method === 'GET' && subPath === '/service-tickets') {
-        const list = serviceTickets.filter((t) => t.siteId === siteId);
-        return delay(list as unknown as T);
+        const list = data.serviceTickets.filter((t) => t.siteId === siteId);
+        return delay(500, list as unknown as T);
       }
       if (method === 'POST' && subPath === '/service-tickets') {
         const payload = body as Omit<ServiceTicket, 'id' | 'createdAt' | 'updatedAt' | 'status'>;
@@ -1233,48 +1393,70 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
           createdAt: new Date().toISOString(),
           status: 'OPEN',
         };
-        serviceTickets = [ticket, ...serviceTickets];
-        return delay(ticket as unknown as T);
+        data.serviceTickets.push(ticket); // Update global data
+        return delay(500, ticket as unknown as T);
       }
       const svcTicketMatchApi = subPath.match(/^\/service-tickets\/([^/]+)$/);
       if (svcTicketMatchApi && method === 'PUT') {
         const ticketId = svcTicketMatchApi[1];
         const partial = body as Partial<ServiceTicket>;
-        const ticket = serviceTickets.find((t) => t.id === ticketId && t.siteId === siteId);
+        const ticket = data.serviceTickets.find((t) => t.id === ticketId && t.siteId === siteId);
         if (!ticket) throw new Error('Ticket not found');
         Object.assign(ticket, partial, { updatedAt: new Date().toISOString() });
-        return delay(ticket as unknown as T);
+        return delay(500, ticket as unknown as T);
       }
     }
     if (method === 'GET' && path.startsWith('/api/orders')) {
       const url = new URL(`http://dummy${path}`);
       const siteId = url.searchParams.get('siteId') || undefined;
-      const list = siteId ? canonicalOrders.filter((o) => o.siteId === siteId) : canonicalOrders;
-      return delay(list as unknown as T);
+      const list = siteId ? data.canonicalOrders.filter((o) => o.siteId === siteId) : data.canonicalOrders;
+      return delay(500, list as unknown as T);
+    }
+    if (method === 'PUT' && path.startsWith('/api/alerts/')) {
+      const alertIdMatch = path.match(/^\/api\/alerts\/([^/]+)$/);
+      if (!alertIdMatch) throw new Error('Alert ID is required');
+      const alertId = alertIdMatch[1];
+      const alert = data.alerts.find((a) => a.id === alertId);
+      if (!alert) throw new Error('Alert not found');
+      const payload = body as Partial<Alert>;
+      Object.assign(alert, payload);
+      return delay(500, alert as unknown as T);
+    }
+    const orderPoMatch = path.match(/^\/api\/orders\/([^/]+)\/update-po$/);
+    if (orderPoMatch && method === 'POST') {
+      const orderId = orderPoMatch[1];
+      const order = data.canonicalOrders.find((o) => o.id === orderId);
+      if (!order) throw new Error('Order not found');
+      const po = (body as { poNumber?: string }).poNumber;
+      order.jobberPoNumber = po || order.jobberPoNumber;
+      order.updatedAt = new Date().toISOString();
+      order.updatedBy = 'User';
+      return delay(500, order as unknown as T);
     }
     const orderActionMatch = path.match(/^\/api\/orders\/([^/]+)\/(confirm|dispatch|deliver|cancel)$/);
     if (orderActionMatch && method === 'POST') {
       const orderId = orderActionMatch[1];
       const action = orderActionMatch[2];
       const po = (body as { jobberPoNumber?: string } | undefined)?.jobberPoNumber;
-      const order = canonicalOrders.find((o) => o.id === orderId);
+      const order = data.canonicalOrders.find((o) => o.id === orderId);
       if (!order) throw new Error('Order not found');
       if (action === 'confirm') {
-        applyOrderStatus(order, 'CONFIRMED', po);
+        applyOrderStatus(order, 'CONFIRMED', po, 'User');
       } else if (action === 'dispatch') {
-        applyOrderStatus(order, 'DISPATCHED');
+        throw new Error('Dispatch step is disabled in this mock. Please mark delivered directly.');
       } else if (action === 'deliver') {
-        applyOrderStatus(order, 'DELIVERED');
+        applyOrderStatus(order, 'DELIVERED', undefined, 'User');
       } else if (action === 'cancel') {
-        applyOrderStatus(order, 'CANCELLED');
+        applyOrderStatus(order, 'CANCELLED', undefined, 'User');
       }
-      return delay(order as unknown as T);
+      return delay(500, order as unknown as T);
     }
     if (method === 'POST' && path === '/api/orders') {
       const payload = body as { siteId: string; jobberId: string; lines: { tankId: string; quantityGallonsRequested: number }[] };
       const now = Date.now();
       const orderNumber = `ORD-${now}`;
       const total = payload.lines.reduce((sum, l) => sum + l.quantityGallonsRequested, 0);
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
       const newOrder: CanonOrder = {
         id: orderNumber,
         orderNumber,
@@ -1283,90 +1465,91 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
         jobberId: payload.jobberId,
         status: 'PENDING',
         quantityGallonsRequested: total,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: twoDaysAgo,
+        updatedAt: twoDaysAgo,
+        updatedBy: 'User',
         ruleTriggered: false,
         jobberPoNumber: undefined,
         lines: payload.lines,
       };
-      canonicalOrders = [newOrder, ...canonicalOrders];
-      return delay(newOrder as unknown as T);
+      data.canonicalOrders = [newOrder, ...data.canonicalOrders]; // Update global data
+      return delay(500, newOrder as unknown as T);
     }
     const orderMatchApi = path.match(/^\/api\/orders\/([^/]+)$/);
     if (orderMatchApi && method === 'PUT') {
       const orderId = orderMatchApi[1];
       const partial = body as Partial<CanonOrder>;
-      const order = canonicalOrders.find((o) => o.id === orderId);
+      const order = data.canonicalOrders.find((o) => o.id === orderId);
       if (!order) throw new Error('Order not found');
 
-      // Handle status transitions and jobber PO number generation
-      if (partial.status === 'CONFIRMED' && !order.jobberPoNumber) {
-        order.jobberPoNumber = partial.jobberPoNumber || `PO-${Date.now()}`;
+      if (partial.status === 'DISPATCHED') {
+        throw new Error('Dispatch step is disabled in this mock. Please mark delivered directly.');
       }
-      if (partial.status && ['DELIVERED', 'DELIVERED_SHORT', 'DELIVERED_OVER'].includes(partial.status)) {
-        generateDeliveriesForOrder(order);
+      if (partial.status && ['CONFIRMED', 'DELIVERED', 'DELIVERED_SHORT', 'DELIVERED_OVER', 'CANCELLED'].includes(partial.status)) {
+        applyOrderStatus(order, partial.status as CanonOrder['status'], partial.jobberPoNumber, 'User');
       } else {
         Object.assign(order, partial);
         order.updatedAt = new Date().toISOString();
+        order.updatedBy = 'User';
       }
-      return delay(order as unknown as T);
+      return delay(500, order as unknown as T);
     }
   if (method === 'GET' && path === '/api/jobbers') {
-    const canonJobbers: CanonJobber[] = jobbers.map((j) => ({
+    const canonJobbers: CanonJobber[] = data.jobbers.map((j) => ({
       id: j.id,
       name: j.name,
       contact: { name: j.contactName ?? j.name, phone: j.phone, email: j.email },
       communication: { preferredChannel: j.communication?.preferredChannel ?? 'EMAIL', notes: j.communication?.notes ?? '' },
       system: { externalId: j.id, integrationType: 'MANUAL' },
     }));
-    return delay(canonJobbers as unknown as T);
+    return delay(500, canonJobbers as unknown as T);
   }
     if (method === 'GET' && path === '/api/settings') {
-      const payload: CanonSiteSettings[] = sites.map((s) => buildCanonicalSettings(s.id));
-      return delay(payload as unknown as T);
+      const payload: CanonSiteSettings[] = data.sites.map((s) => buildCanonicalSettings(s.id));
+      return delay(500, payload as unknown as T);
     }
     if (method === 'GET' && path === '/api/suppliers') {
-      return delay(suppliers as unknown as T);
+      return delay(500, data.suppliers as unknown as T);
     }
     if (method === 'GET' && path.startsWith('/api/tickets')) {
       const url = new URL(`http://dummy${path}`);
       const idMatch = path.match(/^\/api\/tickets\/([^/]+)$/);
       if (idMatch) {
-        const ticket = canonicalTickets.find((t) => t.id === idMatch[1]);
+        const ticket = data.canonicalTickets.find((t) => t.id === idMatch[1]);
         if (!ticket) throw new Error('Ticket not found');
-        return delay(ticket as unknown as T);
+        return delay(500, ticket as unknown as T);
       }
       const siteId = url.searchParams.get('siteId') || undefined;
-      const list = siteId ? canonicalTickets.filter((t) => t.siteId === siteId) : canonicalTickets;
-      return delay(list as unknown as T);
+      const list = siteId ? data.canonicalTickets.filter((t) => t.siteId === siteId) : data.canonicalTickets;
+      return delay(500, list as unknown as T);
     }
     if (method === 'POST' && path === '/api/tickets') {
       const payload = body as CanonTicket;
-      const ticket: CanonTicket = {
-        ...payload,
-        id: payload.id || `tkt-${Date.now()}`,
-        createdAt: payload.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        status: payload.status || 'OPEN',
-        comments: [],
-        orderNumber: (payload as any).orderNumber,
+        const ticket: CanonTicket = {
+          ...payload,
+          id: payload.id || `tkt-${Date.now()}`,
+          createdAt: payload.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: payload.status || 'OPEN',
+          comments: [],
+          orderNumber: payload.orderNumber,
       };
-      canonicalTickets = [ticket, ...canonicalTickets];
-      return delay(ticket as unknown as T);
+      data.canonicalTickets = [ticket, ...data.canonicalTickets]; // Update global data
+      return delay(500, ticket as unknown as T);
     }
       const ticketMatchPut = path.match(/^\/api\/tickets\/([^/]+)$/);
       if (ticketMatchPut && method === 'PUT') {
         const ticketId = ticketMatchPut[1];
         const partial = body as Partial<CanonTicket>;
-      const ticket = canonicalTickets.find((t) => t.id === ticketId);
+      const ticket = data.canonicalTickets.find((t) => t.id === ticketId);
       if (!ticket) throw new Error('Ticket not found');
       Object.assign(ticket, partial, { updatedAt: new Date().toISOString() });
-      return delay(ticket as unknown as T);
+      return delay(500, ticket as unknown as T);
     }
     const ticketCommentMatch = path.match(/^\/api\/tickets\/([^/]+)\/comments$/);
       if (ticketCommentMatch && method === 'POST') {
         const ticketId = ticketCommentMatch[1];
-        const ticket = canonicalTickets.find((t) => t.id === ticketId);
+        const ticket = data.canonicalTickets.find((t) => t.id === ticketId);
         if (!ticket) throw new Error('Ticket not found');
         const payload = (body || {}) as { text: string; author?: string };
         if (!ticket.comments) ticket.comments = [];
@@ -1378,64 +1561,64 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
         };
         ticket.comments.push(comment);
         ticket.updatedAt = new Date().toISOString();
-        return delay(ticket as unknown as T);
+        return delay(500, ticket as unknown as T);
       }
     throw new Error(`Mock route not implemented: ${method} ${path}`);
   }
   if (method === 'POST' && path === '/auth/login') {
-    return delay({
-      user: mockUser,
+    return delay(500, {
+      user: data.mockUser,
       token: 'mock-token',
     } as unknown as T);
   }
 
   if (method === 'GET' && path === '/user/profile') {
-    return delay(userProfile as unknown as T);
+    return delay(500, data.userProfile as unknown as T);
   }
 
   if (method === 'PUT' && path === '/user/profile') {
     const partial = body as Partial<UserProfile>;
-    userProfile = { ...userProfile, ...partial };
-    return delay(userProfile as unknown as T);
+    data.userProfile = { ...data.userProfile, ...partial }; // Update global data
+    return delay(500, data.userProfile as unknown as T);
   }
 
   if (method === 'GET' && path === '/suppliers') {
-    return delay(suppliers as unknown as T);
+    return delay(500, data.suppliers as unknown as T);
   }
 
   if (method === 'GET' && path === '/service-companies') {
-    return delay(serviceCompanies as unknown as T);
+    return delay(500, data.serviceCompanies as unknown as T);
   }
 
   if (method === 'GET' && path === '/jobbers') {
-    return delay(jobbers as unknown as T);
+    return delay(500, data.jobbers as unknown as T);
   }
   if (method === 'POST' && path === '/jobbers') {
     const payload = body as Omit<Jobber, 'id'>;
     const jobber: Jobber = { ...payload, id: `job-${Date.now()}` };
-    jobbers.push(jobber);
-    return delay(jobber as unknown as T);
+    data.jobbers.push(jobber); // Update global data
+    return delay(500, jobber as unknown as T);
   }
   const jobberMatch = path.match(/^\/jobbers\/([^/]+)$/);
   if (jobberMatch) {
     const jobberId = jobberMatch[1];
     if (method === 'PUT') {
       const partial = body as Partial<Jobber>;
-      const jobber = jobbers.find((j) => j.id === jobberId);
+      const jobber = data.jobbers.find((j) => j.id === jobberId);
       if (!jobber) throw new Error('Jobber not found');
       Object.assign(jobber, partial);
-      return delay(jobber as unknown as T);
+      return delay(500, jobber as unknown as T);
     }
     if (method === 'DELETE') {
-      const idx = jobbers.findIndex((j) => j.id === jobberId);
+      const idx = data.jobbers.findIndex((j) => j.id === jobberId);
       if (idx === -1) throw new Error('Jobber not found');
-      const removed = jobbers.splice(idx, 1)[0];
-      return delay(removed as unknown as T);
+      const removed = data.jobbers.splice(idx, 1)[0];
+      return delay(500, removed as unknown as T);
     }
   }
 
   if (method === 'GET' && path === '/sites') {
-    return delay(sites.map(withComputedSummary) as unknown as T);
+    return delay(500, data.sites.map(withComputedSummary) as unknown as T);
   }
 
   const siteMatch = path.match(/^\/sites\/([^/]+)(.*)$/);
@@ -1444,96 +1627,94 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
     const subPath = siteMatch[2] || '';
 
     if (method === 'GET' && (subPath === '' || subPath === '/')) {
-      const site = sites.find((s) => s.id === siteId);
+      const site = data.sites.find((s) => s.id === siteId);
       if (!site) throw new Error('Site not found');
-      return delay(withComputedSummary(site) as unknown as T);
+      return delay(500, withComputedSummary(site) as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/tanks') {
       const siteTanks = getPhysicalSiteTanks(siteId);
       const mid = deriveMidTank(siteId);
       const response = mid ? [...siteTanks, mid] : siteTanks;
-      return delay(response as unknown as T);
+      return delay(500, response as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/overview') {
-      const site = sites.find((s) => s.id === siteId);
+      const site = data.sites.find((s) => s.id === siteId);
       if (!site) throw new Error('Site not found');
       const siteTanks = getPhysicalSiteTanks(siteId);
       const mid = deriveMidTank(siteId);
       const allTanks = mid ? [...siteTanks, mid] : siteTanks;
-      const siteAlerts = alerts.filter((a) => a.siteId === siteId);
-      const siteDeliveries = deliveries.filter((d) => d.siteId === siteId);
+      const siteAlerts = data.alerts.filter((a) => a.siteId === siteId);
+      const siteDeliveries = buildDeliveryRecords(siteId);
       const preds = computeRunoutForSite(siteId);
-      const siteEvents = varianceEvents.filter((v) => v.siteId === siteId);
-      const todayGallons = siteEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
-      const todayValue = todayGallons * 3.5;
-      const last7DaysGallons = todayGallons * 3;
-      const last7DaysValue = last7DaysGallons * 3.5;
-      const siteOrders = fuelOrders.filter((o) => o.siteId === siteId);
+      const salesVariance = deriveSalesVariance(siteId);
+      const siteOrders = data.fuelOrders.filter((o) => o.siteId === siteId);
       return delay(
+        500,
         {
           site: withComputedSummary(site),
           tanks: allTanks,
           alerts: siteAlerts,
           deliveries: siteDeliveries,
           runout: preds,
-          variance: {
-            today: { gallons: todayGallons, value: todayValue },
-            last7Days: { gallons: last7DaysGallons, value: last7DaysValue },
-            events: siteEvents,
-          },
+          variance: salesVariance,
           orders: siteOrders,
         } as unknown as T
       );
     }
 
     if (method === 'GET' && subPath === '/alerts') {
-      const siteAlerts = alerts.filter((a) => a.siteId === siteId);
-      return delay(siteAlerts as unknown as T);
+      const siteAlerts = data.alerts.filter((a) => a.siteId === siteId);
+      return delay(500, siteAlerts as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/deliveries') {
-      const siteDeliveries = deliveries.filter((d) => d.siteId === siteId);
-      return delay(siteDeliveries as unknown as T);
+      const siteDeliveries = buildDeliveryRecords(siteId);
+      return delay(500, siteDeliveries as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/order-suggestions') {
       const suggestion = buildOrderSuggestion(siteId);
-      return delay(suggestion as unknown as T);
+      return delay(500, suggestion as unknown as T);
+    }
+
+    if (method === 'GET' && subPath === '/sales-series') {
+      const sales = deriveSalesSeries(siteId);
+      return delay(500, sales as unknown as T);
     }
 
     if (method === 'GET' && subPath === '/contacts') {
-      const list = managerContacts.filter((c) => c.siteId === siteId);
-      return delay(list as unknown as T);
+      const list = data.managerContacts.filter((c) => c.siteId === siteId);
+      return delay(500, list as unknown as T);
     }
 
     if (method === 'POST' && subPath === '/contacts') {
       const payload = body as Omit<ManagerContact, 'id' | 'siteId'>;
       const contact: ManagerContact = { ...payload, siteId, id: `mgr-${Date.now()}` };
-      managerContacts.push(contact);
-      return delay(contact as unknown as T);
+      data.managerContacts.push(contact); // Update global data
+      return delay(500, contact as unknown as T);
     }
 
     const contactMatch = subPath.match(/^\/contacts\/([^/]+)$/);
     if (contactMatch && (method === 'PUT' || method === 'DELETE')) {
       const contactId = contactMatch[1];
-      const contactIndex = managerContacts.findIndex((c) => c.id === contactId && c.siteId === siteId);
+      const contactIndex = data.managerContacts.findIndex((c) => c.id === contactId && c.siteId === siteId);
       if (contactIndex === -1) throw new Error('Contact not found');
       if (method === 'PUT') {
         const partial = body as Partial<ManagerContact>;
-        Object.assign(managerContacts[contactIndex], partial);
-        return delay(managerContacts[contactIndex] as unknown as T);
+        Object.assign(data.managerContacts[contactIndex], partial); // Update global data
+        return delay(500, data.managerContacts[contactIndex] as unknown as T);
       }
       if (method === 'DELETE') {
-        const removed = managerContacts.splice(contactIndex, 1)[0];
-        return delay(removed as unknown as T);
+        const removed = data.managerContacts.splice(contactIndex, 1)[0]; // Update global data
+        return delay(500, removed as unknown as T);
       }
     }
 
     if (method === 'GET' && subPath === '/orders') {
-      const siteOrders = fuelOrders.filter((o) => o.siteId === siteId);
-      return delay(siteOrders as unknown as T);
+      const siteOrders = data.fuelOrders.filter((o) => o.siteId === siteId);
+      return delay(500, siteOrders as unknown as T);
     }
 
     if (method === 'POST' && subPath === '/orders') {
@@ -1553,192 +1734,16 @@ export async function mockRequest<T>(method: HttpMethod, path: string, body?: un
         createdAt: new Date().toISOString(),
         requestedDeliveryWindowStart: payload.requestedDeliveryWindowStart,
         requestedDeliveryWindowEnd: payload.requestedDeliveryWindowEnd,
-        notes: payload.notes,
         lines: payload.lines.map((l, idx) => ({
           id: `line-${Date.now()}-${idx}`,
-          gradeCode: l.gradeCode,
-          requestedGallons: l.requestedGallons,
+          ...l,
         })),
       };
-
-      fuelOrders.push(newOrder);
-      return delay(newOrder as unknown as T);
-    }
-
-    const orderMatch = subPath.match(/^\/orders\/([^/]+)$/);
-    if (orderMatch && method === 'PUT') {
-      const orderId = orderMatch[1];
-      const partial = body as Partial<FuelOrder>;
-      const order = fuelOrders.find((o) => o.id === orderId && o.siteId === siteId);
-      if (!order) throw new Error('Order not found');
-      Object.assign(order, partial);
-      return delay(order as unknown as T);
-    }
-
-    if (method === 'GET' && subPath === '/service-companies') {
-      const comps = serviceCompanies.filter((c) => c.siteId === siteId);
-      return delay(comps as unknown as T);
-    }
-
-    if (method === 'POST' && subPath === '/service-companies') {
-      const payload = body as Omit<ServiceCompany, 'id'>;
-      const company: ServiceCompany = { ...payload, id: `svc-${Date.now()}` };
-      serviceCompanies.push(company);
-      return delay(company as unknown as T);
-    }
-
-    const svcMatch = subPath.match(/^\/service-companies\/([^/]+)$/);
-    if (svcMatch && method === 'PUT') {
-      const svcId = svcMatch[1];
-      const company = serviceCompanies.find((c) => c.id === svcId && c.siteId === siteId);
-      if (!company) throw new Error('Service company not found');
-      Object.assign(company, body as Partial<ServiceCompany>);
-      return delay(company as unknown as T);
-    }
-
-    if (svcMatch && method === 'DELETE') {
-      const svcId = svcMatch[1];
-      const idx = serviceCompanies.findIndex((c) => c.id === svcId && c.siteId === siteId);
-      if (idx === -1) throw new Error('Service company not found');
-      const removed = serviceCompanies.splice(idx, 1)[0];
-      return delay(removed as unknown as T);
-    }
-
-    if (method === 'GET' && subPath === '/service-tickets') {
-      const tickets = serviceTickets.filter((t) => t.siteId === siteId);
-      return delay(tickets as unknown as T);
-    }
-
-    if (method === 'POST' && subPath === '/service-tickets') {
-      const payload = body as {
-        providerId: string;
-        issue: string;
-        contactName?: string;
-        phone?: string;
-        notes?: string;
-      };
-      const ticket: ServiceTicket = {
-        id: `ticket-${Date.now()}`,
-        siteId,
-        providerId: payload.providerId,
-        issue: payload.issue,
-        status: 'OPEN',
-        createdAt: new Date().toISOString(),
-        contactName: payload.contactName,
-        phone: payload.phone,
-        notes: payload.notes,
-      };
-      serviceTickets.push(ticket);
-      return delay(ticket as unknown as T);
-    }
-
-    const ticketMatch = subPath.match(/^\/service-tickets\/([^/]+)$/);
-    if (ticketMatch && method === 'PUT') {
-      const ticketId = ticketMatch[1];
-      const partial = body as Partial<ServiceTicket>;
-      const ticket = serviceTickets.find((t) => t.id === ticketId && t.siteId === siteId);
-      if (!ticket) throw new Error('Ticket not found');
-      Object.assign(ticket, partial);
-      return delay(ticket as unknown as T);
-    }
-
-    if (method === 'GET' && subPath === '/variance') {
-      const siteEvents = varianceEvents.filter((v) => v.siteId === siteId);
-      const recentEvents = siteEvents.filter(
-        (v) => Date.now() - new Date(v.timestamp).getTime() <= 1000 * 60 * 60 * 24 * 7
-      );
-      const todayEvents = recentEvents.filter(
-        (v) => new Date(v.timestamp).toDateString() === new Date().toDateString()
-      );
-      const todayGallons = todayEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
-      const todayValue = todayGallons * 3.5;
-      const last7DaysGallons = recentEvents.reduce((sum, v) => sum + v.varianceGallons, 0);
-      const last7DaysValue = last7DaysGallons * 3.5;
-      return delay(
-        {
-          today: { gallons: todayGallons, value: todayValue },
-          last7Days: { gallons: last7DaysGallons, value: last7DaysValue },
-          events: siteEvents,
-        } as unknown as T
-      );
-    }
-
-    if (method === 'GET' && subPath === '/runout') {
-      const preds = computeRunoutForSite(siteId);
-      return delay(preds as unknown as T);
-    }
-
-    if (method === 'POST' && subPath === '/backoffice-sync') {
-      const s = settings.find((st) => st.siteId === siteId);
-      const provider = s?.backOfficeProvider ?? 'MODISOFT';
-      const providerLabel = provider === 'MODISOFT' ? 'Modisoft' : 'C-Store';
-      const payload = (body || {}) as { tankId?: string; gradeCode?: string };
-      const result: BackOfficeSyncResult = {
-        siteId,
-        provider,
-        status: 'QUEUED',
-        startedAt: new Date().toISOString(),
-        message: `Sync queued with ${providerLabel} for ${payload.gradeCode || 'all grades'} (mock).`,
-        ticketId: `bosync-${Date.now()}`,
-      };
-      return delay(result as unknown as T);
-    }
-
-    if (method === 'GET' && subPath === '/settings') {
-      const s = settings.find((st) => st.siteId === siteId);
-      if (!s) throw new Error('Settings not found');
-      return delay(s as unknown as T);
-    }
-
-    if (method === 'PUT' && subPath === '/settings') {
-      const partial = body as Partial<SiteSettings>;
-      let s = settings.find((st) => st.siteId === siteId);
-      if (!s) {
-        s = {
-          siteId,
-          lowTankPercent: 20,
-          criticalTankPercent: 10,
-          dailyVarianceAlertGallons: 50,
-          notifyByEmail: true,
-          notifyBySms: false,
-        preferredComm: 'EMAIL',
-        alertFrequencyCritical: 'IMMEDIATE',
-        alertFrequencyWarning: 'HOURLY',
-        alertFrequencyInfo: 'DAILY',
-        jobberId: jobbers[0]?.id,
-        jobberContactName: jobbers[0]?.contactName,
-        jobberPhone: jobbers[0]?.phone,
-        jobberEmail: jobbers[0]?.email,
-        jobberPortalUsername: '',
-        jobberPortalPassword: '',
-        serviceCompanyId: serviceCompanies.find((c) => c.siteId === siteId)?.id ?? serviceCompanies[0]?.id,
-        serviceContactName: serviceCompanies.find((c) => c.siteId === siteId)?.contactName,
-        servicePhone: serviceCompanies.find((c) => c.siteId === siteId)?.phone,
-        serviceEmail: serviceCompanies.find((c) => c.siteId === siteId)?.email,
-        serviceNotes: serviceCompanies.find((c) => c.siteId === siteId)?.notes,
-        backOfficeProvider: 'MODISOFT',
-        backOfficeUsername: '',
-        backOfficePassword: '',
-        };
-        settings.push(s);
-      }
-      Object.assign(s, partial);
-      return delay(s as unknown as T);
+      data.fuelOrders.push(newOrder);
+      data.canonicalOrders = buildCanonicalOrders(data.sites, data.tanks, data.fuelOrders); // Rebuild canonical orders
+      return delay(500, newOrder as unknown as T);
     }
   }
-
-  if (method === 'GET' && path === '/alerts') {
-    ensureAtgSeeded();
-    const url = new URL(`http://dummy${path}`);
-    const siteId = url.searchParams.get('siteId') || undefined;
-    if (siteId) {
-      const derived = deriveLiveStatus(siteId).alerts;
-      return delay(derived as unknown as T);
-    }
-    const all = buildCanonicalSites().flatMap((s) => deriveLiveStatus(s.id).alerts);
-    return delay(all as unknown as T);
-  }
-
-  throw new Error(`Mock route not implemented: ${method} ${path}`);
+  // This return makes sure that when a new endpoint is added, a message is returned to the user instead of returning an unknown error.
+  return delay(500, { message: `Mock route not implemented: ${method} ${path}` } as unknown as T);
 }
-

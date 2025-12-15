@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo_new.png';
+import ConfirmModal from './ConfirmModal';
 
 type NavItem =
   | { to: string; label: string; icon: keyof typeof icons }
@@ -25,6 +26,56 @@ const icons = {
         strokeWidth="1.6"
         d="M12 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm7.5 2.5a7.5 7.5 0 0 0-.1-1l2-1.5-2-3.4-2.3.9a7.4 7.4 0 0 0-1.8-1L15 2h-4l-.3 3a7.4 7.4 0 0 0-1.8 1l-2.3-.9-2 3.4 2 1.5a7.5 7.5 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9a7.4 7.4 0 0 0 1.8 1l.3 3h4l.3-3a7.4 7.4 0 0 0 1.8-1l2.3.9 2-3.4-2-1.5a7.5 7.5 0 0 0 .1-1Z"
       />
+    </svg>
+  ),
+  bell: (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        d="M6 9a6 6 0 1 1 12 0c0 3 1 5 2 6H4c1-1 2-3 2-6Z"
+        strokeLinecap="round"
+      />
+      <path stroke="currentColor" strokeWidth="1.6" d="M10 18a2 2 0 0 0 4 0" strokeLinecap="round" />
+    </svg>
+  ),
+  clipboard: (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="1.6" d="M7 5h10v16H7z" />
+      <rect x="9" y="3" width="6" height="4" rx="1" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path stroke="currentColor" strokeWidth="1.6" d="M9 10h6m-6 4h6" strokeLinecap="round" />
+    </svg>
+  ),
+  plus: (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="1.8" d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
+  ),
+  truck: (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        d="M3 6h11v9H3zM14 10h3l3 3v2h-6z"
+        strokeLinejoin="round"
+      />
+      <circle cx="7" cy="18" r="1.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="16.5" cy="18" r="1.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  ),
+  alert: (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        d="M12 3 2.5 20h19L12 3Z"
+        strokeLinejoin="round"
+      />
+      <path stroke="currentColor" strokeWidth="1.6" d="M12 9.5v4" strokeLinecap="round" />
+      <circle cx="12" cy="16.5" r="0.9" fill="currentColor" />
     </svg>
   ),
   info: (
@@ -76,19 +127,16 @@ const icons = {
 };
 
 const productLinks: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: 'dashboard' },
-  { to: '/alerts', label: 'Alerts', icon: 'settings' },
-  { to: '/orders', label: 'Orders', icon: 'settings' },
-  { to: '/orders/new', label: 'Create Order', icon: 'settings' },
-  { to: '/deliveries', label: 'Deliveries', icon: 'settings' },
-  { to: '/issues', label: 'Issues', icon: 'settings' },
-  { to: '/settings', label: 'Settings', icon: 'settings' },
+  { to: '/app', label: 'Dashboard', icon: 'dashboard' },
+  { to: '/app/alerts', label: 'Notifications', icon: 'bell' },
+  { to: '/app/orders', label: 'Orders', icon: 'clipboard' },
+  { to: '/app/orders/new', label: 'Create Order', icon: 'plus' },
+  { to: '/app/deliveries', label: 'Deliveries', icon: 'truck' },
+  { to: '/app/issues', label: 'Issues', icon: 'alert' },
+  { to: '/app/settings', label: 'Settings', icon: 'settings' },
 ];
 
 const companyLinks: NavItem[] = [
-  { to: '/about', label: 'About Us', icon: 'info' },
-  { to: '/faq', label: 'FAQ', icon: 'help' },
-  { to: '/contact', label: 'Contact Us', icon: 'mail' },
   {
     href: 'https://forms.gle/D3x9MPPv3HmNvnCh9',
     label: 'Feedback',
@@ -100,11 +148,12 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
   const [productOpen, setProductOpen] = useState(true);
   const [companyOpen, setCompanyOpen] = useState(true);
   const navigate = useNavigate();
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   function handleLogout() {
     localStorage.removeItem('fuelguard-token');
     localStorage.removeItem('fuelguard-user');
-    navigate('/login');
+    navigate('/');
   }
 
   const sidebarClass = `sidebar${isOpen ? ' open' : ''}`;
@@ -112,9 +161,9 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
   return (
     <aside className={sidebarClass}>
       <div className="sidebar-header">
-        <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <img src={logo} alt="FuelSense" style={{ height: 80, width: 'auto' }} />
-          <span style={{ fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.02em' }}>FuelSense</span>
+        <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <img src={logo} alt="FuelSensex" style={{ height: 32, width: 'auto' }} />
+          <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>FuelSensex</span>
         </div>
       </div>
 
@@ -125,7 +174,7 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
           aria-expanded={productOpen}
           onClick={() => setProductOpen((prev) => !prev)}
         >
-          <span>FuelSense Menu</span>
+          <span>FuelSensex Menu</span>
           <span>{productOpen ? '▾' : '▸'}</span>
         </button>
         <nav className={`nav-links ${productOpen ? 'open' : 'closed'}`}>
@@ -134,7 +183,7 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
               <NavLink
                 key={link.to}
                 to={link.to}
-                end={link.to === '/' || link.to === '/orders' || link.to === '/deliveries'}
+                end={link.to === '/app' || link.to === '/app/orders' || link.to === '/app/deliveries'}
                 className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
                 onClick={onLinkClick}
               >
@@ -194,12 +243,24 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
               </NavLink>
             )
           )}
-          <button className="nav-link nav-action" type="button" onClick={handleLogout}>
+          <button className="nav-link nav-action" type="button" onClick={() => setConfirmLogout(true)}>
             <span className="nav-icon">{icons.logout}</span>
             <span className="nav-label">Logout</span>
           </button>
         </div>
       </div>
+      <ConfirmModal
+        open={confirmLogout}
+        title="Confirm logout"
+        message="You are about to sign out of FuelSensex."
+        confirmLabel="Logout"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          setConfirmLogout(false);
+          handleLogout();
+        }}
+        onCancel={() => setConfirmLogout(false)}
+      />
     </aside>
   );
 }

@@ -1,85 +1,104 @@
-import type { ReactNode } from 'react';
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div>
-      <div style={{ fontWeight: 700 }}>{title}</div>
-      <div className="muted">{children}</div>
-    </div>
-  );
-}
-
 export default function FAQPage() {
+  const base = import.meta.env.BASE_URL;
+  const loginHref = `${base}login`;
+  const contactHref = `${base}contact`;
+  const backHref = base;
+  const logo = `${base}logo_new.png`;
+
   return (
-    <div className="page">
-      <div className="card">
-        <div className="card-header">
-          <div style={{ fontWeight: 800 }}>FuelSense FAQ</div>
-          <div className="muted">Quick, clear answers for station owners.</div>
-        </div>
-        <div className="grid" style={{ gap: '0.75rem' }}>
-          <Section title="What does FuelSense actually do?">
-            FuelSense watches your tanks, pumps, deliveries, and variance 24/7 and alerts you the moment something goes wrong - water,
-            shortages, runout risk, theft, POS/ATG mismatches, and more. It is like having a full-time fuel manager who never sleeps.
-          </Section>
-
-          <Section title="How do notifications work?">
-            We continuously read your ATG data and variance signals. When something looks off, you get an instant alert on the dashboard,
-            in the notifications center, and at the store level. You can add notes, assign the alert, or close it when resolved - everything
-            is tracked.
-          </Section>
-
-          <Section title="Can FuelSense help me audit deliveries?">
-            Yes - better than any manual process. FuelSense automatically suggests order quantities, tracks delivery windows, compares BOL
-            vs actual tank increase, flags any short or suspicious delivery, and logs everything for proof later. No more guessing or
-            relying on paper tickets.
-          </Section>
-
-          <Section title="Does FuelSense help with service issues?">
-            Absolutely. From any notification or tank card, you can open a service ticket to your preferred provider (set in Settings). You
-            will see issue details, tank/grade affected, time detected, and ticket status until it is closed. Everything stays organized and
-            traceable.
-          </Section>
-
-          <Section title="How is Fuel Loss History calculated?">
-            FuelSense aggregates every variance event - by day, week, month, and grade. You can see where you are losing gallons, patterns
-            over time, and how much those losses cost. This is your proof when something feels off.
-          </Section>
-
-          <Section title="Can I switch between stores quickly?">
-            Yes. Use the store selector in the header or open Notifications for a multi-site overview. Works whether you run one flagship
-            location or a growing network of sites.
-          </Section>
-
-          <Section title="Do I need special hardware?">
-            FuelSense connects securely to your ATG data with a lightweight on-site bridge. It is turnkey, tidy, and does not require a
-            complex install.
-          </Section>
-
-          <Section title="Will this replace my POS or back office system?">
-            No - FuelSense sits on top of your ATG and POS. It does not replace anything. It simply gives you visibility they do not provide.
-          </Section>
-
-          <Section title="Is it hard to use?">
-            Not at all. FuelSense is designed for busy operators - the ones who do not have time for spreadsheets, portals, or tech
-            headaches. If you can navigate WhatsApp or Facebook, you can use FuelSense.
-          </Section>
-
-          <Section title="Can I trust the data?">
-            Yes. FuelSense reads directly from your ATG and reconciles it against your POS and deliveries. We do not guess - we measure.
-          </Section>
-
-          <Section title="How do I get help?">
-            You can use the Contact page anytime. We are here to support independent operators - not send you to offshore call centers.
-          </Section>
-
-          <Section title="Why do owners call FuelSense the holy grail?">
-            Because it finally solves the biggest hidden drain in their business: fuel loss they cannot see, prove, or stop. FuelSense shows
-            real numbers, proves what happened, catches problems early, saves thousands, pays for itself immediately, and gives owners back
-            control.
-          </Section>
-        </div>
+    <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '1rem' }}>
+      <div style={{ display: 'grid', gap: '0.75rem', placeItems: 'center', textAlign: 'center', marginBottom: '1rem' }}>
+        <img src={logo} alt="FuelSensex" style={{ height: 48 }} />
+        <div style={{ fontWeight: 800, fontSize: '1.4rem' }}>FuelSensex FAQ</div>
+        <div className="muted" style={{ maxWidth: '78ch' }}>Clear answers for owners, jobbers, and back-office teams.</div>
       </div>
+
+      <section className="card" id="faq" style={{ margin: '0 auto', maxWidth: '980px' }}>
+        <div className="card-header" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+          <div>
+            <div style={{ fontWeight: 800 }}>FuelSensex FAQ</div>
+            <div className="muted">Clear answers for owners, jobbers, and back-office teams.</div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <a className="button" href={loginHref}>View demo</a>
+            <a className="button ghost" href={contactHref}>Contact</a>
+            <a className="button ghost" href={backHref}>Back</a>
+          </div>
+        </div>
+
+        <div className="card-body" style={{ display: 'grid', gap: '0.75rem' }}>
+          <div className="muted" style={{ maxWidth: '78ch' }}>
+            If you don’t see your question here, use the Contact page and we’ll help you quickly.
+          </div>
+
+          <div className="list-grid" style={{ display: 'grid', gap: '0.65rem' }}>
+            <details className="list-card" open>
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>What problems does FuelSensex solve?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                FuelSensex provides a single operational view across ATG readings, deliveries, orders, and POs—so teams can reconcile faster,
+                identify exceptions earlier, and maintain a defensible operational history.
+              </div>
+            </details>
+
+            <details className="list-card">
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>How does unsolicited delivery handling work?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                FuelSensex flags unplanned drops, provides a guided flow to link the delivery to an order and PO, and preserves the audit trail—so variance can be addressed with clarity and confidence.
+              </div>
+            </details>
+
+            <details className="list-card">
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>How are deliveries matched to orders?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                FuelSensex uses ATG start/end volumes and BOL details to suggest matches. Operators can confirm, adjust, or link manually. Every change is recorded with timestamps.
+              </div>
+            </details>
+
+            <details className="list-card">
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>How often is ATG data refreshed?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                In the mock environment, updates may appear as frequently as every minute. In production, refresh follows the cadence your ATG bridge publishes events—so “live” reflects current site data.
+              </div>
+            </details>
+
+            <details className="list-card">
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>Do I need special hardware?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                FuelSensex works with your existing ATG feed via an ATG bridge connection. No new console is required. Data is transmitted securely.
+              </div>
+            </details>
+
+            <details className="list-card">
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>Is FuelSensex multi-site friendly?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                Yes. FuelSensex supports multi-site views, per-site drilldowns, and role-based access for different teams and responsibilities.
+              </div>
+            </details>
+
+            <details className="list-card">
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>What about audit and compliance?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                Every alert, delivery link, override, and comment is recorded with timestamps, providing a defensible record when questions arise.
+              </div>
+            </details>
+
+            <details className="list-card">
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>How do I get help?</summary>
+              <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
+                Use the Contact page for support or to request a walkthrough. FuelSensex is built for operators, and support is intended to be direct and practical.
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <style>{`
+        #faq details > summary::-webkit-details-marker { display: none; }
+        #faq details > summary { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; }
+        #faq details > summary::after { content: "▾"; color: inherit; opacity: 0.7; font-weight: 800; }
+        #faq details[open] > summary::after { content: "▴"; }
+      `}</style>
     </div>
   );
 }

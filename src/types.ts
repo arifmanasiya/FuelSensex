@@ -43,7 +43,8 @@ export type AlertType =
   | 'SHORT_DELIVERY'
   | 'RUNOUT_RISK'
   | 'WATER_DETECTED'
-  | 'ATG_POS_MISMATCH';
+  | 'ATG_POS_MISMATCH'
+  | 'ATG_ALARM';
 
 export interface Alert {
   id: string;
@@ -68,6 +69,9 @@ export interface DeliveryRecord {
   expectedReadingGallons?: number;
   issueNote?: string;
   orderNumber?: string;
+  poNumber?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface JobberPortalCredentials {
@@ -139,6 +143,8 @@ export interface FuelOrder {
   requestedDeliveryWindowEnd: string;
   notes?: string;
   lines: FuelOrderLine[];
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface OrderSuggestion {
@@ -236,4 +242,40 @@ export interface ManagerContact {
   notifyEmail?: boolean;
   notifySms?: boolean;
   notifyCall?: boolean;
+}
+
+export interface PageHeader {
+  title: string;
+  subtitle?: string;
+  infoTooltip?: string;
+}
+
+export type PageHeaderKey =
+  | 'dashboard'
+  | 'alerts'
+  | 'settings'
+  | 'ordersList'
+  | 'createOrder'
+  | 'deliveries'
+  | 'issues';
+
+export type PageHeaders = Record<PageHeaderKey, PageHeader>;
+
+export interface SalesSeriesPoint {
+  timestamp: string;
+  gallons: number;
+  middle?: number;
+  upper?: number;
+  lower?: number;
+}
+
+export interface SalesSeriesEntry {
+  gradeCode: string;
+  points: SalesSeriesPoint[];
+}
+
+export interface SalesSeriesResponse {
+  updatedAt?: string;
+  windowDays: number;
+  series: SalesSeriesEntry[];
 }

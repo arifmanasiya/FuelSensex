@@ -1,16 +1,30 @@
-import { useMemo, useState } from 'react';
-import { useJobbers, useOrderAction, useOrders, useSiteTanks, useSites } from '../api/hooks';
+﻿import { useMemo, useState } from 'react';
+import { useJobbers, useOrderAction, useOrders, useSiteTanks, useSites, usePageHeaders } from '../api/hooks';
 import PageHeader from '../components/PageHeader';
-import { pageHeaderConfig } from '../config/pageHeaders';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function OrdersListPage() {
   const { data: sites = [] } = useSites();
+  const { data: pageHeaders } = usePageHeaders();
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const { data: orders = [] } = useOrders(selectedSiteId || undefined);
   const { data: tanks = [] } = useSiteTanks(selectedSiteId || '');
   const { data: jobbers = [] } = useJobbers();
   const orderAction = useOrderAction();
-  const [poDrafts, setPoDrafts] = useState<Record<string, string>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const extractErrorMessage = (err: unknown): string | undefined => {
+    if (err instanceof Error) return err.message;
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'message' in err &&
+      typeof (err as { message?: unknown }).message === 'string'
+    ) {
+      return (err as { message?: string }).message;
+    }
+    return undefined;
+  };
 
   const tankLookup = useMemo(() => {
     const map = new Map<string, (typeof tanks)[number]>();
@@ -42,29 +56,31 @@ export default function OrdersListPage() {
   const gradeLabel = (tankId: string) => {
     const code = tankLookup.get(tankId)?.productType;
     if (code === 'REGULAR') return 'REG';
-    if (code === 'PREMIUM') return 'PRM';
+    if (code === 'PREMIUM') return 'SUP';
     if (code === 'DIESEL') return 'DSL';
     if (code === 'VIRTUAL_MIDGRADE') return 'MID';
     return tankLookup.get(tankId)?.name || tankId;
   };
 
-  const statusBadgeClass = (status: string) => {
-    if (status === 'PENDING' || status === 'REQUESTED') return 'badge badge-yellow';
-    if (status === 'CONFIRMED') return 'badge badge-blue';
-    if (status === 'DISPATCHED') return 'badge badge-blue';
-    if (status === 'DELIVERED' || status === 'DELIVERED_SHORT' || status === 'DELIVERED_OVER') return 'badge badge-green';
-    if (status === 'CANCELLED') return 'badge badge-gray';
-    return 'badge badge-yellow';
+  const statusBadge = (status: string) => {
+    if (status === 'CANCELLED') {
+      return { text: 'CANCELLED', className: 'status status--cancelled' };
+    }
+    const delivered = status === 'DELIVERED' || status === 'DELIVERED_SHORT' || status === 'DELIVERED_OVER';
+    return {
+      text: delivered ? 'DELIVERED' : 'PENDING',
+      className: delivered ? 'status status--ok' : 'status status--pending',
+    };
   };
 
-  const header = pageHeaderConfig.ordersList;
+  const header = pageHeaders?.ordersList;
 
   return (
     <div className="page">
       <PageHeader
-        title={header.title}
-        subtitle={header.subtitle}
-        infoTooltip={header.infoTooltip}
+        title={header?.title || 'Recent Orders'}
+        subtitle={header?.subtitle}
+        infoTooltip={header?.infoTooltip}
         siteSelect={{
           value: selectedSiteId,
           onChange: setSelectedSiteId,
@@ -72,14 +88,27 @@ export default function OrdersListPage() {
         }}
       />
 
-      <div className="card">
-        <div className="card-header">
+      <div className="orders-card" aria-label="Orders">
+        <div className="orders-card__header">
           <div>
-            <div style={{ fontWeight: 700 }}>Orders</div>
-            <div className="muted">{ordersBySite.length} records</div>
+            <div className="orders-title">Orders</div>
+            <div className="orders-subtitle muted">
+              {ordersBySite.length} record{ordersBySite.length === 1 ? '' : 's'}
+            </div>
           </div>
         </div>
-        <div className="list-grid">
+        <div className="ol-head" role="rowgroup">
+          <div className="ol-row ol-row--head" role="row">
+            <div className="ol-cell" role="columnheader">Supplier</div>
+            <div className="ol-cell" role="columnheader">Site &amp; time</div>
+            <div className="ol-cell" role="columnheader">Order / PO</div>
+            <div className="ol-cell" role="columnheader">Lines</div>
+            <div className="ol-cell" role="columnheader">Total</div>
+            <div className="ol-cell ol-cell--right" role="columnheader">Status</div>
+            <div className="ol-cell ol-cell--right" role="columnheader">Actions</div>
+          </div>
+        </div>
+        <div className="ol-body" role="rowgroup">
           {[...ordersBySite]
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
             .map((o) => {
@@ -88,77 +117,104 @@ export default function OrdersListPage() {
               const lines = o.lines?.length ? o.lines : [{ tankId: o.tankId || 'unknown', quantityGallonsRequested: o.quantityGallonsRequested }];
               const total = lines.reduce((sum, l) => sum + (l.quantityGallonsRequested || 0), 0);
               const delivered = lines.reduce((sum, l) => sum + (l.quantityGallonsDelivered || 0), 0);
-              const poDraft = poDrafts[o.id] ?? '';
-              const canConfirm = o.status === 'PENDING';
-              const canDispatch = o.status === 'CONFIRMED';
-              const canDeliver = o.status === 'DISPATCHED';
+              const canDeliver = o.status === 'CONFIRMED' || o.status === 'PENDING';
               const isTerminal = o.status === 'DELIVERED' || o.status === 'DELIVERED_SHORT' || o.status === 'DELIVERED_OVER' || o.status === 'CANCELLED';
               return (
-                <div className="list-card" key={o.id}>
-                  <div className="list-meta" style={{ alignItems: 'flex-start', gap: '0.5rem', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Order {o.orderNumber || o.id}</div>
-                      <div className="muted" style={{ fontSize: '0.9rem' }}>
-                        {jobberLabel} • {siteLabel} • {new Date(o.createdAt).toLocaleString()}
-                      </div>
+                <div className="ol-row" role="row" key={o.id}>
+                  <div className="ol-cell" role="cell" data-label="Supplier">
+                    <div className="primary">{jobberLabel}</div>
+                  </div>
+                  <div className="ol-cell" role="cell" data-label="Site &amp; time">
+                    <div className="primary">{siteLabel}</div>
+                    <div className="muted small">{new Date(o.createdAt).toLocaleString()}</div>
+                  </div>
+                  <div className="ol-cell" role="cell" data-label="Order / PO">
+                    <div className="primary">
+                      Order <span className="mono">{o.orderNumber || o.id}</span>
                     </div>
-                    <span className={statusBadgeClass(o.status)}>{o.status}</span>
-                  </div>
-                  <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.35rem' }}>
-                    {lines.map((line) => (
-                      <div key={line.tankId} className="muted" style={{ fontSize: '0.9rem' }}>
-                        • {gradeLabel(line.tankId)}: {line.quantityGallonsRequested.toLocaleString()} gal
-                        {typeof line.quantityGallonsDelivered === 'number'
-                          ? ` (delivered ${line.quantityGallonsDelivered.toLocaleString()} gal)`
-                          : ''}
+                    {o.jobberPoNumber ? (
+                      <div className="muted small">
+                        PO <span className="mono">{o.jobberPoNumber}</span>
                       </div>
-                    ))}
+                    ) : (
+                      <div className="muted small">PO —</div>
+                    )}
                   </div>
-                  <div className="muted" style={{ fontSize: '0.85rem', marginTop: '0.4rem' }}>
-                    Total {total.toLocaleString()} gal
-                    {delivered ? ` • Delivered ${delivered.toLocaleString()} gal` : ''}
-                    {o.jobberPoNumber ? ` • PO ${o.jobberPoNumber}` : ''}
+                  <div className="ol-cell" role="cell" data-label="Lines">
+                    <div className="lines">
+                      {lines.map((line) => (
+                        <div key={line.tankId} className="line-item">
+                          {gradeLabel(line.tankId)}: <strong>{line.quantityGallonsRequested.toLocaleString()}</strong> gal
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  {!isTerminal ? (
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.65rem' }}>
-                      {canConfirm ? (
-                        <>
-                          <input
-                            type="text"
-                            placeholder="PO number (optional)"
-                            value={poDraft}
-                            onChange={(e) => setPoDrafts((p) => ({ ...p, [o.id]: e.target.value }))}
-                            style={{ minWidth: 160 }}
-                          />
-                          <button
-                            className="button"
-                            onClick={() => orderAction.mutate({ id: o.id, action: 'confirm', data: { jobberPoNumber: poDraft || undefined } })}
-                          >
-                            Confirm
-                          </button>
-                        </>
-                      ) : null}
-                      {canDispatch ? (
-                        <button className="button ghost" onClick={() => orderAction.mutate({ id: o.id, action: 'dispatch' })}>
-                          Dispatch
+                  <div className="ol-cell" role="cell" data-label="Total">
+                    <div className="primary">
+                      <strong>{total.toLocaleString()}</strong> gal
+                    </div>
+                    {delivered ? <div className="muted small">Delivered {delivered.toLocaleString()} gal</div> : <div className="muted small">Total</div>}
+                  </div>
+                  <div className="ol-cell ol-cell--right" role="cell" data-label="Status">
+                    {(() => {
+                      const badge = statusBadge(o.status);
+                      return <span className={badge.className}>{badge.text}</span>;
+                    })()}
+                  </div>
+                  <div className="ol-cell ol-cell--right" role="cell" data-label="Actions">
+                    <div className="actions">
+                      {!isTerminal && canDeliver ? (
+                        <button
+                          className="btn btn--ghost"
+                          onClick={async () => {
+                            setActionError(null);
+                            try {
+                              await orderAction.mutateAsync({ id: o.id, action: 'deliver' });
+                            } catch (err: unknown) {
+                              setActionError(
+                                extractErrorMessage(err) ||
+                                  'No delivery event found after order creation time. Cannot mark delivered. If you think this is an error, please contact your system administrator.',
+                              );
+                            }
+                          }}
+                        >
+                          Mark delivered
                         </button>
                       ) : null}
-                      {canDeliver ? (
-                        <button className="button ghost" onClick={() => orderAction.mutate({ id: o.id, action: 'deliver' })}>
-                          Mark delivered (simulate)
+                      {!isTerminal ? (
+                        <button
+                          className="btn btn--ghost btn--danger"
+                          onClick={async () => {
+                            setActionError(null);
+                            try {
+                              await orderAction.mutateAsync({ id: o.id, action: 'cancel' });
+                            } catch (err: unknown) {
+                              setActionError(extractErrorMessage(err) || 'Failed to cancel order');
+                            }
+                          }}
+                        >
+                          Cancel
                         </button>
                       ) : null}
-                      <button className="button ghost" onClick={() => orderAction.mutate({ id: o.id, action: 'cancel' })}>
-                        Cancel
-                      </button>
-                      {orderAction.isPending ? <span className="muted">Updating...</span> : null}
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               );
             })}
+          {ordersBySite.length === 0 ? <div className="muted" style={{ padding: '0.75rem' }}>No orders for this site yet.</div> : null}
         </div>
-        {ordersBySite.length === 0 ? <div className="muted">No orders for this site yet.</div> : null}
+        <ConfirmModal
+          open={!!actionError}
+          title="Unable to mark delivered"
+          message={
+            actionError ||
+            'No delivery event found after order creation time. Cannot mark delivered. If you think this is an error, please contact your system administrator.'
+          }
+          confirmLabel="Close"
+          cancelLabel=""
+          onConfirm={() => setActionError(null)}
+          onCancel={() => setActionError(null)}
+        />
       </div>
     </div>
   );

@@ -1,69 +1,107 @@
-export default function AboutPage() {
+﻿export default function AboutPage() {
+  const base = import.meta.env.BASE_URL;
+  const loginHref = `${base}login`;
+  const topHref = `${base}#home-hero`;
+  const logo = `${base}logo_new.png`;
+
   return (
-    <div className="page">
-      <div className="card">
-        <div className="card-header">
-          <div style={{ fontWeight: 800 }}>About FuelSense</div>
-        </div>
-        <div className="grid" style={{ gap: '0.75rem' }}>
-          <p>
-            FuelSense exists for one simple reason: independent gas station owners lose too much money without ever seeing it happen.
-            Fuel gets stolen, deliveries come up short, tanks run low, and POS/ATG numbers never quite match - and most of the time, you
-            only find out days or weeks later. We built FuelSense to stop that.
-          </p>
-          <p>
-            Created by LabUDIS © with real operators in mind, FuelSense is a fuel loss prevention and station intelligence platform that
-            watches your tanks, pumps, and deliveries 24/7 - so you do not have to. Our goal is to give small operators the same visibility
-            and control big chains have, without the complexity, cost, or IT headaches.
-          </p>
-
-          <div className="card" style={{ margin: 0 }}>
-            <div className="card-header">
-              <div style={{ fontWeight: 700 }}>We understand the pain</div>
-            </div>
-            <ul className="muted" style={{ paddingLeft: '1.2rem', display: 'grid', gap: '0.35rem' }}>
-              <li>Running a single store is hard. Running two or three is exhausting.</li>
-              <li>Variance you cannot explain.</li>
-              <li>Deliveries you are not fully sure about.</li>
-              <li>Tanks that run low at the worst possible time.</li>
-              <li>Employees who mean well but make costly mistakes.</li>
-              <li>Vendors who do not always tell the full story.</li>
-            </ul>
-            <p className="muted" style={{ marginTop: '0.25rem' }}>
-            FuelSense is built to remove that stress and give owners back control over the one thing that keeps the lights on: fuel.
-            </p>
-          </div>
-
-          <div className="card" style={{ margin: 0 }}>
-            <div className="card-header">
-              <div style={{ fontWeight: 700 }}>Our approach</div>
-            </div>
-            <p className="muted">
-              We blend reliable ATG data with modern analytics to catch problems early, reduce shrink, predict runouts, verify every
-              delivery, and automate the daily checks owners hate doing. No spreadsheets. No manual reconciliation. No guessing.
-            </p>
-          </div>
-
-          <div className="card" style={{ margin: 0 }}>
-            <div className="card-header">
-              <div style={{ fontWeight: 700 }}>What FuelSense delivers</div>
-            </div>
-            <ul className="muted" style={{ paddingLeft: '1.2rem', display: 'grid', gap: '0.35rem' }}>
-              <li>Instant alerts for water, shortages, theft, variance spikes, and runout risk.</li>
-              <li>Fuel ordering suggestions with supplier info and delivery audit trails.</li>
-              <li>Service ticket routing to your preferred vendors with full context.</li>
-              <li>Clear variance history so you can quantify losses - and the money you are saving.</li>
-              <li>Simple dashboards designed for busy operators, not data analysts.</li>
-            </ul>
-          </div>
-
-          <p>
-            FuelSense is built to be practical, fast, and owner-friendly - a real tool for real operators who cannot afford to lose a gallon.
-            Because at the end of the day, every gallon matters, and losing even a little adds up fast. Our mission is to make sure you never
-            lose money because of fuel again.
-          </p>
-        </div>
+    <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '1rem' }}>
+      <div style={{ display: 'grid', gap: '0.75rem', placeItems: 'center', textAlign: 'center', marginBottom: '1rem' }}>
+        <img src={logo} alt="FuelSensex" style={{ height: 48 }} />
+        <div style={{ fontWeight: 800, fontSize: '1.4rem' }}>About FuelSensex</div>
+        <div className="muted" style={{ maxWidth: '78ch' }}>Built for real fuel operations</div>
       </div>
+
+      <section className="card" id="about-us">
+        <div className="card-header" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+          <div>
+            <div style={{ fontWeight: 800 }}>About FuelSensex</div>
+            <div className="muted">Built for real fuel operations</div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <a className="button ghost" href={loginHref}>View demo</a>
+          </div>
+        </div>
+
+        <div className="card-body" style={{ display: 'grid', gap: '1rem' }}>
+          <div style={{ display: 'grid', gap: '0.4rem', maxWidth: '78ch' }}>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, lineHeight: 1.2 }}>
+              Built for operators who need proof — not assumptions.
+            </div>
+            <div className="muted">
+              FuelSensex was created to solve a simple but costly problem: fuel operations generate critical data,
+              but operators rarely get clear answers when something goes wrong.
+            </div>
+          </div>
+
+          <div className="list-card" style={{ display: 'grid', gap: '0.5rem' }}>
+            <div style={{ fontWeight: 800 }}>Why we built FuelSensex</div>
+            <div className="muted" style={{ maxWidth: '80ch' }}>
+              Independent operators lose money in ways that are hard to see and even harder to prove.
+              Deliveries don’t always reconcile cleanly. Tanks drift. Variance accumulates quietly.
+              By the time issues surface, the opportunity to correct them is often gone.
+            </div>
+
+            <div className="muted">
+              FuelSensex exists to change that by making fuel activity visible, explainable, and defensible — while it’s still actionable.
+            </div>
+          </div>
+
+          <div className="list-card" style={{ display: 'grid', gap: '0.5rem' }}>
+            <div style={{ fontWeight: 800 }}>How we think about fuel operations</div>
+
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <div className="muted">• ATG data should tell a story, not require interpretation</div>
+              <div className="muted">• Deliveries should be verifiable, not assumed</div>
+              <div className="muted">• Exceptions should surface early, not during audits</div>
+              <div className="muted">• Manual actions should be traceable, not invisible</div>
+            </div>
+          </div>
+
+          <div className="list-card" style={{ display: 'grid', gap: '0.5rem' }}>
+            <div style={{ fontWeight: 800 }}>What guides the platform</div>
+
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <div className="muted">• Designed around real ATG and delivery workflows</div>
+              <div className="muted">• Supports human judgment with full audit history</div>
+              <div className="muted">• Built for multi-site operations without added complexity</div>
+              <div className="muted">• Focused on operational clarity, not generic analytics</div>
+            </div>
+
+            <div className="muted" style={{ marginTop: '0.25rem' }}>
+              FuelSensex is not about replacing operators — it’s about giving them the information they need to make confident decisions.
+            </div>
+          </div>
+
+          <div className="list-card" style={{ display: 'grid', gap: '0.5rem' }}>
+            <div style={{ fontWeight: 800 }}>Who FuelSensex is for</div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span className="badge badge-gray">Independent operators</span>
+              <span className="badge badge-gray">Multi-site owners</span>
+              <span className="badge badge-gray">Fuel managers</span>
+              <span className="badge badge-gray">Compliance &amp; finance teams</span>
+            </div>
+
+            <div className="muted">Anyone responsible for fuel decisions, accountability, or outcomes.</div>
+          </div>
+
+          <div className="list-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ maxWidth: '70ch' }}>
+              <div style={{ fontWeight: 800 }}>Our mission</div>
+              <div className="muted">
+                To ensure operators never lose money because fuel activity went unnoticed, unexplained, or undocumented.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <a className="button" href={loginHref}>View demo</a>
+              <a className="button ghost" href={topHref}>Back to top</a>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

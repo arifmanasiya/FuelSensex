@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useLocation } from 'react-router-dom';
-import { get, post, put, del } from '../api/apiClient';
+import { post, put, del } from '../api/apiClient';
 import { useQueryClient } from '@tanstack/react-query';
 import { qk } from '../api/queryKeys';
 import ConfirmModal from '../components/ConfirmModal';
 import PageHeader from '../components/PageHeader';
-import { pageHeaderConfig } from '../config/pageHeaders';
-import type { Jobber, ManagerContact, ServiceCompany, SiteSettings, SiteSummary } from '../types';
-import { useJobbers as useCanonJobbers, useSettings as useCanonSettings, useSiteTanks, useUpdateTank } from '../api/hooks';
+import type { Jobber, ManagerContact, ServiceCompany, SiteSettings } from '../types';
+import { useJobbers as useAllJobbers, useSiteTanks, useUpdateTank, usePageHeaders, useSites, useSiteSettings, useServiceCompanies, useContacts, useUpdateSiteSettings } from '../api/hooks';
+import { buildCanonicalSettings } from '../api/mockServer';
 import { useRef } from 'react';
 
 type SettingsSection = 'notifications' | 'tanks' | 'backoffice' | 'jobbers' | 'services';
@@ -21,16 +21,40 @@ const sections: { key: SettingsSection; label: string }[] = [
   { key: 'services', label: 'Service companies' },
 ];
 
+type CommChannel = 'EMAIL' | 'SMS' | 'CALL' | 'PORTAL';
+
+type ServiceFormState = {
+  name: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  notes: string;
+  portalUrl: string;
+  preferredChannel: CommChannel;
+};
+
+type JobberFormState = {
+  name: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  portalUrl: string;
+  preferredChannel: CommChannel;
+};
+
 export default function SettingsPage() {
   const location = useLocation();
   const initialSection = parseSection(location.hash) || 'tanks';
-  const [sites, setSites] = useState<SiteSummary[]>([]);
+  const { data: sites = [] } = useSites();
   const [selectedSiteId, setSelectedSiteId] = useState('');
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const defaultSiteId = sites[0]?.id ?? '';
+  const activeSiteId = selectedSiteId || defaultSiteId;
+  const { data: settings } = useSiteSettings(activeSiteId);
+  const { data: jobbers = [] } = useAllJobbers(); // site-specific jobbers
+  const { data: serviceCompanies = [] } = useServiceCompanies(activeSiteId);
+  const { data: contacts = [] } = useContacts(activeSiteId || undefined);
+  const { data: pageHeaders } = usePageHeaders();
   const [saved, setSaved] = useState(false);
-  const [jobbers, setJobbers] = useState<Jobber[]>([]);
-  const [serviceCompanies, setServiceCompanies] = useState<ServiceCompany[]>([]);
-  const [contacts, setContacts] = useState<ManagerContact[]>([]);
   const [newContact, setNewContact] = useState({
     name: '',
     role: '',
@@ -43,8 +67,23 @@ export default function SettingsPage() {
     notifySms: true,
     notifyCall: false,
   });
-  const [newService, setNewService] = useState({ name: '', contactName: '', phone: '', email: '', notes: '', portalUrl: '', preferredChannel: 'EMAIL' });
-  const [newJobber, setNewJobber] = useState({ name: '', contactName: '', phone: '', email: '', preferredChannel: 'EMAIL' });
+  const [newService, setNewService] = useState<ServiceFormState>({
+    name: '',
+    contactName: '',
+    phone: '',
+    email: '',
+    notes: '',
+    portalUrl: '',
+    preferredChannel: 'EMAIL',
+  });
+  const [newJobber, setNewJobber] = useState<JobberFormState>({
+    name: '',
+    contactName: '',
+    phone: '',
+    email: '',
+    portalUrl: '',
+    preferredChannel: 'EMAIL',
+  });
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [showAddService, setShowAddService] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
@@ -63,10 +102,9 @@ export default function SettingsPage() {
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [expandedJobberId, setExpandedJobberId] = useState<string | null>(null);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
-  const { data: canonSettings = [] } = useCanonSettings();
-  const { data: canonJobbers = [] } = useCanonJobbers();
-  const { data: canonSiteTanks = [] } = useSiteTanks(selectedSiteId);
+  const { data: canonSiteTanks = [] } = useSiteTanks(activeSiteId);
   const updateTank = useUpdateTank();
+  const updateSiteSettings = useUpdateSiteSettings();
   const saveTimer = useRef<number | null>(null);
   const loadRefs = {
     reg: useRef<HTMLInputElement | null>(null),
@@ -75,13 +113,17 @@ export default function SettingsPage() {
     mid: useRef<HTMLInputElement | null>(null),
   };
 
+  const { data: allJobbers = [] } = useAllJobbers();
+
   const canonicalSnapshot = useMemo(
     () => {
-      const siteSetting = canonSettings.find((s) => s.siteId === selectedSiteId) || canonSettings[0];
-      const backOffice = siteSetting?.backOffice;
-      const notificationContacts = siteSetting?.notifications?.contacts?.length ?? 0;
-      const primaryJobber = siteSetting?.jobberId ? canonJobbers.find((j) => j.id === siteSetting.jobberId) : undefined;
-      const primaryJobberName = primaryJobber?.name || (siteSetting?.jobberId ?? 'Not set');
+      // Use buildCanonicalSettings to get the canonical representation which includes backOffice and notifications
+      const canonicalSiteSettings = selectedSiteId ? buildCanonicalSettings(selectedSiteId) : undefined;
+      
+      const backOffice = canonicalSiteSettings?.backOffice;
+      const notificationContacts = canonicalSiteSettings?.notifications?.contacts?.length ?? 0;
+      const primaryJobber = canonicalSiteSettings?.jobberId ? allJobbers.find((j) => j.id === canonicalSiteSettings.jobberId) : undefined;
+      const primaryJobberName = primaryJobber?.name || (canonicalSiteSettings?.jobberId ?? 'Not set');
       return {
         backOfficeName: backOffice?.systemName || 'Back office',
         backOfficeStatus: backOffice?.status || 'OK',
@@ -89,25 +131,29 @@ export default function SettingsPage() {
         notificationContacts,
       };
     },
-    [canonSettings, canonJobbers, selectedSiteId]
+      [allJobbers, selectedSiteId]
   );
 
   const sectionLabel = useMemo(() => sections.find((s) => s.key === section)?.label || 'Settings', [section]);
 
   const setSectionAndHash = (next: SettingsSection) => {
     setSection(next);
-    window.location.hash = `#${next}`;
   };
 
   useEffect(() => {
     const nextSection = parseSection(location.hash);
     if (nextSection && nextSection !== section) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSection(nextSection);
     }
   }, [location.hash, section]);
 
   useEffect(() => {
-    document.title = `FuelSense Settings - ${sectionLabel}`;
+    window.location.hash = `#${section}`;
+  }, [section]);
+
+  useEffect(() => {
+    document.title = `FuelSensex Settings - ${sectionLabel}`;
   }, [sectionLabel]);
 
   useEffect(() => {
@@ -136,31 +182,6 @@ export default function SettingsPage() {
     </div>
   );
 
-  useEffect(() => {
-    Promise.all([get<SiteSummary[]>('/sites'), get<Jobber[]>('/jobbers')]).then(([data, jobberData]) => {
-      setSites(data);
-      setJobbers(jobberData);
-      if (data.length) setSelectedSiteId(data[0].id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selectedSiteId) return;
-    Promise.all([
-      get<SiteSettings>(`/sites/${selectedSiteId}/settings`),
-      get<ServiceCompany[]>(`/sites/${selectedSiteId}/service-companies`),
-      get<ManagerContact[]>(`/sites/${selectedSiteId}/contacts`),
-    ]).then(([settingRes, svcRes, contactsRes]) => {
-      setSettings(settingRes);
-      setServiceCompanies(svcRes);
-      setContacts(contactsRes);
-      if (loadRefs.reg.current) loadRefs.reg.current.value = (settingRes.defaultLoadRegGallons ?? '').toString();
-      if (loadRefs.prem.current) loadRefs.prem.current.value = (settingRes.defaultLoadPremGallons ?? '').toString();
-      if (loadRefs.dsl.current) loadRefs.dsl.current.value = (settingRes.defaultLoadDslGallons ?? '').toString();
-      if (loadRefs.mid.current) loadRefs.mid.current.value = (settingRes.defaultLoadMidGallons ?? '').toString();
-    });
-  }, [selectedSiteId]);
-
   useEffect(() => () => {
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
@@ -168,17 +189,13 @@ export default function SettingsPage() {
   }, []);
 
   function handleChange<K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) {
-    if (!settings) return;
+    if (!settings || !selectedSiteId) return;
     setSaved(false);
     const next = { ...settings, [key]: value };
-    setSettings(next);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
-      const updated = await put<SiteSettings>(`/sites/${selectedSiteId}/settings`, next);
-      setSettings(updated);
+      await updateSiteSettings.mutateAsync({ siteId: selectedSiteId, data: next });
       setSaved(true);
-      qc.invalidateQueries({ queryKey: qk.settings });
-      qc.invalidateQueries({ queryKey: qk.sites });
     }, 500);
   }
 
@@ -189,14 +206,14 @@ export default function SettingsPage() {
 
   async function handleAddServiceCompany() {
     if (!selectedSiteId || !newService.name) return;
-    const { portalUrl, preferredChannel, ...rest } = newService as any;
+    const { portalUrl, preferredChannel, ...rest } = newService;
     const created = await post<ServiceCompany>(`/sites/${selectedSiteId}/service-companies`, {
       siteId: selectedSiteId,
       ...rest,
       communication: preferredChannel ? { preferredChannel } : undefined,
       portal: portalUrl ? { url: portalUrl } : undefined,
     });
-    setServiceCompanies((prev) => [created, ...prev]);
+    qc.invalidateQueries({ queryKey: qk.serviceCompanies(selectedSiteId) });
     setNewService({ name: '', contactName: '', phone: '', email: '', notes: '', portalUrl: '', preferredChannel: 'EMAIL' });
     if (settings) {
       await saveNow({
@@ -211,14 +228,14 @@ export default function SettingsPage() {
 
   async function handleAddJobber() {
     if (!newJobber.name) return;
-    const { portalUrl, preferredChannel, ...rest } = newJobber as any;
+    const { portalUrl, preferredChannel, ...rest } = newJobber;
     const created = await post<Jobber>('/jobbers', {
       ...rest,
       communication: preferredChannel ? { preferredChannel } : undefined,
       portal: portalUrl ? { url: portalUrl } : undefined,
     });
-    setJobbers((prev) => [created, ...prev]);
-    setNewJobber({ name: '', contactName: '', phone: '', email: '', preferredChannel: 'EMAIL' });
+    qc.invalidateQueries({ queryKey: qk.jobbers });
+    setNewJobber({ name: '', contactName: '', phone: '', email: '', preferredChannel: 'EMAIL', portalUrl: '' });
     if (settings) {
       await saveNow({
         jobberId: created.id,
@@ -251,23 +268,22 @@ export default function SettingsPage() {
   }
 
   async function handleUpdateContact(contactId: string, patch: Partial<ManagerContact>) {
-    const updated = await put<ManagerContact>(`/sites/${selectedSiteId}/contacts/${contactId}`, patch);
-    setContacts((prev) => prev.map((c) => (c.id === contactId ? updated : c)));
+    await put<ManagerContact>(`/sites/${selectedSiteId}/contacts/${contactId}`, patch);
+    qc.invalidateQueries({ queryKey: qk.contacts(selectedSiteId) });
   }
 
   async function handleUpdateJobber(jobberId: string, patch: Partial<Jobber>) {
-    const updated = await put<Jobber>(`/jobbers/${jobberId}`, patch);
-    setJobbers((prev) => prev.map((j) => (j.id === jobberId ? updated : j)));
+    await put<Jobber>(`/jobbers/${jobberId}`, patch);
     qc.invalidateQueries({ queryKey: qk.settings });
     qc.invalidateQueries({ queryKey: qk.jobbers });
     qc.invalidateQueries({ queryKey: qk.sites });
   }
 
   async function handleUpdateService(companyId: string, patch: Partial<ServiceCompany>) {
-    const updated = await put<ServiceCompany>(`/sites/${selectedSiteId}/service-companies/${companyId}`, patch);
-    setServiceCompanies((prev) => prev.map((c) => (c.id === companyId ? updated : c)));
+    await put<ServiceCompany>(`/sites/${selectedSiteId}/service-companies/${companyId}`, patch);
     qc.invalidateQueries({ queryKey: qk.settings });
     qc.invalidateQueries({ queryKey: qk.sites });
+    qc.invalidateQueries({ queryKey: qk.serviceCompanies(selectedSiteId) });
   }
 
   async function handleDeleteJobber(jobber: Jobber) {
@@ -277,7 +293,7 @@ export default function SettingsPage() {
   async function handleDeleteJobberConfirmed() {
     if (!confirmJobber) return;
     await del(`/jobbers/${confirmJobber.id}`);
-    setJobbers((prev) => prev.filter((j) => j.id !== confirmJobber.id));
+    qc.invalidateQueries({ queryKey: qk.jobbers });
     if (settings?.jobberId === confirmJobber.id) {
       await saveNow({ jobberId: undefined, jobberContactName: undefined, jobberPhone: undefined, jobberEmail: undefined });
     }
@@ -294,7 +310,7 @@ export default function SettingsPage() {
   async function handleDeleteServiceConfirmed() {
     if (!confirmService) return;
     await del(`/sites/${selectedSiteId}/service-companies/${confirmService.id}`);
-    setServiceCompanies((prev) => prev.filter((c) => c.id !== confirmService.id));
+    qc.invalidateQueries({ queryKey: qk.serviceCompanies(selectedSiteId) });
     if (settings?.serviceCompanyId === confirmService.id) {
       await saveNow({ serviceCompanyId: undefined, serviceContactName: undefined, servicePhone: undefined, serviceEmail: undefined, serviceNotes: undefined });
     }
@@ -307,14 +323,14 @@ export default function SettingsPage() {
   async function handleDeleteContactConfirmed() {
     if (!confirmDelete) return;
     await del(`/sites/${selectedSiteId}/contacts/${confirmDelete.id}`);
-    setContacts((prev) => prev.filter((c) => c.id !== confirmDelete.id));
+    qc.invalidateQueries({ queryKey: qk.contacts(selectedSiteId) });
     setConfirmDelete(null);
   }
 
   async function handleAddContact() {
     if (!selectedSiteId || !newContact.name || !newContact.email) return;
-    const created = await post<ManagerContact>(`/sites/${selectedSiteId}/contacts`, newContact);
-    setContacts((prev) => [created, ...prev]);
+    void await post<ManagerContact>(`/sites/${selectedSiteId}/contacts`, newContact);
+    qc.invalidateQueries({ queryKey: qk.contacts(selectedSiteId) });
     setNewContact({
       name: '',
       role: '',
@@ -338,16 +354,12 @@ export default function SettingsPage() {
   };
 
   const saveNow = async (partial: Partial<SiteSettings>) => {
-    if (!settings) return;
+    if (!settings || !selectedSiteId) return;
     setSaved(false);
     const next = { ...settings, ...partial };
-    setSettings(next);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    const updated = await put<SiteSettings>(`/sites/${selectedSiteId}/settings`, next);
-    setSettings(updated);
+    await updateSiteSettings.mutateAsync({ siteId: selectedSiteId, data: next });
     setSaved(true);
-    qc.invalidateQueries({ queryKey: qk.settings });
-    qc.invalidateQueries({ queryKey: qk.sites });
   };
 
 
@@ -359,7 +371,7 @@ export default function SettingsPage() {
         <div className="stack" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {contacts.length ? (
             <div className="card" style={{ margin: 0 }}>
-              <div className="card-header">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700 }}>Store managers & owners</div>
               </div>
               <div className="grid" style={{ gap: '0.75rem' }}>
@@ -578,6 +590,7 @@ export default function SettingsPage() {
               </button>
             </div>
           ) : null}
+
         </div>
       );
     }
@@ -639,6 +652,7 @@ export default function SettingsPage() {
                   type="number"
                   defaultValue={settings.lowTankPercent}
                   onBlur={(e) => handleChange('lowTankPercent', Number(e.target.value))}
+                  style={{ height: 38 }}
                 />
               </div>
               <div className="form-field">
@@ -647,6 +661,7 @@ export default function SettingsPage() {
                   type="number"
                   defaultValue={settings.criticalTankPercent}
                   onBlur={(e) => handleChange('criticalTankPercent', Number(e.target.value))}
+                  style={{ height: 38 }}
                 />
               </div>
               <div className="form-field">
@@ -655,6 +670,7 @@ export default function SettingsPage() {
                   type="number"
                   defaultValue={settings.dailyVarianceAlertGallons}
                   onBlur={(e) => handleChange('dailyVarianceAlertGallons', Number(e.target.value))}
+                  style={{ height: 38 }}
                 />
               </div>
             </div>
@@ -675,10 +691,11 @@ export default function SettingsPage() {
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
+                  style={{ height: 38 }}
                 />
               </div>
               <div className="form-field">
-                <label>Premium load (gal)</label>
+                <label>Super load (gal)</label>
                 <input
                   type="number"
                   ref={loadRefs.prem}
@@ -690,6 +707,7 @@ export default function SettingsPage() {
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
+                  style={{ height: 38 }}
                 />
               </div>
               <div className="form-field">
@@ -705,6 +723,7 @@ export default function SettingsPage() {
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
+                  style={{ height: 38 }}
                 />
               </div>
               <div className="form-field">
@@ -720,6 +739,7 @@ export default function SettingsPage() {
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
+                  style={{ height: 38 }}
                 />
               </div>
               <div className="form-field" style={{ gridColumn: '1 / -1' }}>
@@ -918,7 +938,7 @@ export default function SettingsPage() {
                 <div style={{ fontWeight: 700 }}>Saved jobbers</div>
               </div>
               <div className="grid" style={{ gap: '0.5rem' }}>
-                {jobbers.map((j) => (
+                {jobbers.map((j: Jobber) => (
                   <div
                     key={j.id}
                     style={{
@@ -972,7 +992,14 @@ export default function SettingsPage() {
                           <label>Preferred channel</label>
                           <select
                             value={j.communication?.preferredChannel || 'EMAIL'}
-                            onChange={(e) => handleUpdateJobber(j.id, { communication: { ...j.communication, preferredChannel: e.target.value as any } })}
+                            onChange={(e) =>
+                              handleUpdateJobber(j.id, {
+                                communication: {
+                                  ...j.communication,
+                                  preferredChannel: e.target.value as CommChannel,
+                                },
+                              })
+                            }
                           >
                             <option value="PORTAL">Portal</option>
                             <option value="EMAIL">Email</option>
@@ -1059,8 +1086,8 @@ export default function SettingsPage() {
                   <label>Website</label>
                   <input
                     placeholder="https://jobber-website.com"
-                    value={(newJobber as any).portalUrl || ''}
-                    onChange={(e) => setNewJobber((prev) => ({ ...prev, portalUrl: e.target.value } as any))}
+                    value={newJobber.portalUrl}
+                    onChange={(e) => setNewJobber((prev) => ({ ...prev, portalUrl: e.target.value }))}
                   />
                 </div>
               </div>
@@ -1161,7 +1188,7 @@ export default function SettingsPage() {
                             value={s.communication?.preferredChannel || 'EMAIL'}
                             onChange={(e) =>
                               handleUpdateService(s.id, {
-                                communication: { ...s.communication, preferredChannel: e.target.value as any },
+                                communication: { ...s.communication, preferredChannel: e.target.value as CommChannel },
                               })
                             }
                           >
@@ -1232,7 +1259,7 @@ export default function SettingsPage() {
                     onChange={(e) => setNewService((prev) => ({ ...prev, email: e.target.value }))}
                   />
                 </div>
-                <div className="form-field" style={{ gridColumn: '1 / span 2' }}>
+                <div className="form-field" style={{ gridColumn: '1 / -1' }}>
                   <label>Notes</label>
                   <textarea
                     rows={2}
@@ -1246,15 +1273,15 @@ export default function SettingsPage() {
                   <label>Website</label>
                   <input
                     placeholder="https://serviceco.com"
-                    value={(newService as any).portalUrl || ''}
-                    onChange={(e) => setNewService((prev) => ({ ...prev, portalUrl: e.target.value } as any))}
+                    value={newService.portalUrl}
+                    onChange={(e) => setNewService((prev) => ({ ...prev, portalUrl: e.target.value }))}
                   />
                 </div>
                 <div className="form-field">
                   <label>Preferred channel</label>
                   <select
-                    value={(newService as any).preferredChannel || 'EMAIL'}
-                    onChange={(e) => setNewService((prev) => ({ ...prev, preferredChannel: e.target.value } as any))}
+                    value={newService.preferredChannel}
+                    onChange={(e) => setNewService((prev) => ({ ...prev, preferredChannel: e.target.value as CommChannel }))}
                   >
                     <option value="PORTAL">Portal</option>
                     <option value="EMAIL">Email</option>
@@ -1272,88 +1299,15 @@ export default function SettingsPage() {
       );
     }
 
-    return (
-      <div className="stack" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div className="grid" style={{ gap: '0.75rem', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-          <div className="form-field">
-            <label>Critical</label>
-            <select
-              value={settings.alertFrequencyCritical || 'IMMEDIATE'}
-              onChange={(e) => handleChange('alertFrequencyCritical', e.target.value as SiteSettings['alertFrequencyCritical'])}
-            >
-              <option value="IMMEDIATE">Immediate</option>
-              <option value="HOURLY">Hourly</option>
-              <option value="DAILY">Daily</option>
-            </select>
-          </div>
-          <div className="form-field">
-            <label>Warnings</label>
-            <select
-              value={settings.alertFrequencyWarning || 'HOURLY'}
-              onChange={(e) => handleChange('alertFrequencyWarning', e.target.value as SiteSettings['alertFrequencyWarning'])}
-            >
-              <option value="IMMEDIATE">Immediate</option>
-              <option value="HOURLY">Hourly</option>
-              <option value="DAILY">Daily</option>
-            </select>
-          </div>
-          <div className="form-field">
-            <label>Info</label>
-            <select
-              value={settings.alertFrequencyInfo || 'DAILY'}
-              onChange={(e) => handleChange('alertFrequencyInfo', e.target.value as SiteSettings['alertFrequencyInfo'])}
-            >
-              <option value="IMMEDIATE">Immediate</option>
-              <option value="HOURLY">Hourly</option>
-              <option value="DAILY">Daily</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid" style={{ gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-          <div className="form-field">
-            <label>Preferred notification channel</label>
-            <select
-              value={settings.preferredComm || 'EMAIL'}
-              onChange={(e) => handleChange('preferredComm', e.target.value as SiteSettings['preferredComm'])}
-            >
-              <option value="EMAIL">Email</option>
-              <option value="SMS">Text message</option>
-              <option value="CALL">Phone call</option>
-            </select>
-          </div>
-          <div className="form-field">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.notifyByEmail}
-                onChange={(e) => handleChange('notifyByEmail', e.target.checked)}
-              />{' '}
-              Notify by email
-            </label>
-          </div>
-          <div className="form-field">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.notifyBySms}
-                onChange={(e) => handleChange('notifyBySms', e.target.checked)}
-              />{' '}
-              Notify by SMS
-            </label>
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
-
 
   return (
     <div className="page">
       <PageHeader
-        title={pageHeaderConfig.settings.title}
-        subtitle={pageHeaderConfig.settings.subtitle}
-        infoTooltip={pageHeaderConfig.settings.infoTooltip}
+        title={pageHeaders?.settings.title || 'Settings'}
+        subtitle={pageHeaders?.settings.subtitle}
+        infoTooltip={pageHeaders?.settings.infoTooltip}
         siteSelect={{
           value: selectedSiteId,
           onChange: setSelectedSiteId,
@@ -1503,4 +1457,3 @@ function parseSection(hash: string): SettingsSection | null {
   }
   return null;
 }
-

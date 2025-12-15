@@ -28,12 +28,12 @@ export default function Layout({ children }: Props) {
         <main className="content">
           {children}
         </main>
-        <footer className="footer">
-          <div>
-            <div style={{ fontWeight: 700 }}>FuelSense</div>
-            <div className="muted">A product of LabUDIS ©</div>
-          </div>
-        </footer>
+          <footer className="footer">
+            <div>
+              <div style={{ fontWeight: 700 }}>FuelSensex</div>
+              <div className="muted">A product of LabUDIS ©</div>
+            </div>
+          </footer>
       </div>
       {mobileNavOpen ? <div className="backdrop" onClick={() => setMobileNavOpen(false)} /> : null}
     </div>

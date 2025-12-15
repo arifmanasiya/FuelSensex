@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { get, post, put } from './apiClient';
+import { get, getSiteDetails, getVariance, getSalesSeries, getRunoutPredictions, getServiceTickets, post, put } from './apiClient';
 import { qk } from './queryKeys';
-import type { Site, Tank, Order, Jobber, SiteSettings, Ticket } from '../models/types';
-import type { Alert, RunoutPrediction } from '../types';
+import type { Site, Tank, Order, Jobber, Ticket } from '../models/types';
+import type { Alert, PageHeaders, RunoutPrediction, ServiceCompany, DeliveryRecord, ManagerContact, SiteSettings } from '../types';
 
 type LiveStatus = {
   site: Site;
@@ -10,6 +10,10 @@ type LiveStatus = {
   runout: RunoutPrediction[];
   alerts: Alert[];
 };
+
+export function usePageHeaders() {
+  return useQuery({ queryKey: qk.pageHeaders, queryFn: () => get<PageHeaders>('/api/content/page-headers') });
+}
 
 export function useSites() {
   return useQuery({ queryKey: qk.sites, queryFn: () => get<Site[]>('/api/sites') });
@@ -91,7 +95,11 @@ export function useUpdateOrder() {
 export function useOrderAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, data }: { id: string; action: 'confirm' | 'dispatch' | 'deliver' | 'cancel'; data?: any }) =>
+    mutationFn: ({
+      id,
+      action,
+      data,
+    }: { id: string; action: 'confirm' | 'dispatch' | 'deliver' | 'cancel'; data?: Record<string, unknown> }) =>
       post<Order>(`/api/orders/${id}/${action}`, data),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: qk.orders(data.siteId) });
@@ -127,6 +135,14 @@ export function useUpdateJobber() {
 
 export function useSettings() {
   return useQuery({ queryKey: qk.settings, queryFn: () => get<SiteSettings[]>('/api/settings') });
+}
+
+export function useAlerts(siteId?: string) {
+  return useQuery({
+    queryKey: qk.alerts(siteId),
+    queryFn: () => get<Alert[]>(`/api/sites/${siteId}/alerts`),
+    enabled: !!siteId,
+  });
 }
 
 export function useTickets(siteId?: string) {
@@ -173,5 +189,100 @@ export function useAddTicketComment() {
       qc.invalidateQueries({ queryKey: qk.ticket(data.id) });
       qc.invalidateQueries({ queryKey: qk.tickets(data.siteId) });
     },
+  });
+}
+
+export function useServiceCompanies(siteId?: string) {
+  return useQuery({
+    queryKey: qk.serviceCompanies(siteId),
+    queryFn: () => get<ServiceCompany[]>(`/api/sites/${siteId}/service-companies`),
+    enabled: !!siteId,
+  });
+}
+
+export function useUpdateAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { isOpen: boolean; note?: string } }) =>
+      put<Alert>(`/api/alerts/${id}`, data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: qk.alerts(data.siteId) });
+    },
+  });
+}
+
+export function useSiteSettings(siteId: string) {
+  return useQuery({
+    queryKey: qk.siteSettings(siteId),
+    queryFn: () => get<SiteSettings>(`/api/sites/${siteId}/settings`),
+    enabled: !!siteId,
+  });
+}
+
+export function useDeliveries(siteId?: string) {
+  return useQuery({
+    queryKey: qk.deliveries(siteId),
+    queryFn: () => get<DeliveryRecord[]>(`/api/sites/${siteId}/deliveries`),
+    enabled: !!siteId,
+  });
+}
+
+export function useContacts(siteId?: string) {
+  return useQuery({
+    queryKey: qk.contacts(siteId),
+    queryFn: () => get<ManagerContact[]>(`/sites/${siteId}/contacts`),
+    enabled: !!siteId,
+  });
+}
+
+export function useUpdateSiteSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ siteId, data }: { siteId: string; data: Partial<SiteSettings> }) =>
+      put<SiteSettings>(`/api/sites/${siteId}/settings`, data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: qk.siteSettings(data.siteId as string) });
+      qc.invalidateQueries({ queryKey: qk.settings });
+    },
+  });
+}
+
+export function useSiteDetails(siteId: string) {
+  return useQuery({
+    queryKey: qk.siteDetails(siteId),
+    queryFn: () => getSiteDetails(siteId),
+    enabled: !!siteId,
+  });
+}
+
+export function useVariance(siteId: string) {
+  return useQuery({
+    queryKey: qk.variance(siteId),
+    queryFn: () => getVariance(siteId),
+    enabled: !!siteId,
+  });
+}
+
+export function useSalesSeries(siteId: string) {
+  return useQuery({
+    queryKey: qk.salesSeries(siteId),
+    queryFn: () => getSalesSeries(siteId),
+    enabled: !!siteId,
+  });
+}
+
+export function useRunoutPredictions(siteId: string) {
+  return useQuery({
+    queryKey: qk.runoutPredictions(siteId),
+    queryFn: () => getRunoutPredictions(siteId),
+    enabled: !!siteId,
+  });
+}
+
+export function useServiceTickets(siteId: string) {
+  return useQuery({
+    queryKey: qk.serviceTickets(siteId),
+    queryFn: () => getServiceTickets(siteId),
+    enabled: !!siteId,
   });
 }

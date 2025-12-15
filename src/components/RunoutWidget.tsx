@@ -1,4 +1,5 @@
 import type { RunoutPrediction, Tank } from '../types';
+import { formatDurationHours } from '../utils/duration';
 
 interface Props {
   predictions: RunoutPrediction[];
@@ -18,8 +19,8 @@ export default function RunoutWidget({ predictions, tanks }: Props) {
           return (
             <div key={p.tankId} className="runout-tile">
               <div className="runout-title">{tank?.name || p.gradeCode}</div>
-              <div className="muted">Hours to 10%: {p.hoursToTenPercent}</div>
-              <div className="badge badge-yellow">Empty in {p.hoursToEmpty}h</div>
+              <div className="muted">10% in {formatDurationHours(p.hoursToTenPercent)}</div>
+              <div className="badge badge-yellow">Empty in {formatDurationHours(p.hoursToEmpty)}</div>
             </div>
           );
         })}

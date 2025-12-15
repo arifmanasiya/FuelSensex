@@ -21,7 +21,7 @@ export const pageHeaderConfig: Record<PageHeaderKey, HeaderConfig> = {
   },
   alerts: {
     title: 'Notifications',
-    subtitle: 'Alerts by site',
+    subtitle: 'Notifications by site',
     infoTooltip: 'Switch sites and tabs to review open or closed alerts.',
   },
   settings: {

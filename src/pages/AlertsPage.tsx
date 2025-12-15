@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { get } from '../api/apiClient';
-import type { Alert, ServiceCompany, SiteSummary } from '../types';
-import type { Order } from '../models/types';
+import type { Alert } from '../types';
 import type { Ticket } from '../models/types';
 import AlertBadge from '../components/AlertBadge';
 import PageHeader from '../components/PageHeader';
-import { pageHeaderConfig } from '../config/pageHeaders';
-import { useCreateTicket } from '../api/hooks';
+import { useAlerts, useCreateTicket, usePageHeaders, useSites, useUpdateAlert, useOrders, useServiceCompanies, useServiceTickets } from '../api/hooks';
+import ConfirmModal from '../components/ConfirmModal';
 
 function formatType(type: Alert['type']) {
   const map: Record<Alert['type'], string> = {
@@ -16,14 +14,21 @@ function formatType(type: Alert['type']) {
     RUNOUT_RISK: 'Low fuel risk',
     WATER_DETECTED: 'Water in tank',
     ATG_POS_MISMATCH: 'Meter vs register mismatch',
+    ATG_ALARM: 'ATG alarm',
   };
   return map[type] ?? type.replace(/_/g, ' ');
 }
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [sites, setSites] = useState<SiteSummary[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<string>('');
+  const { data: alerts = [], isLoading: alertsLoading } = useAlerts(selectedSiteId || undefined);
+  const { data: sites = [], isLoading: sitesLoading } = useSites();
+  const { data: pageHeaders } = usePageHeaders();
+  const { data: orders = [] } = useOrders(selectedSiteId);
+  const { data: serviceCompanies = [] } = useServiceCompanies(selectedSiteId);
+  const { data: existingTickets = [] } = useServiceTickets(selectedSiteId);
+  const updateAlert = useUpdateAlert();
+
   const navigate = useNavigate();
   const [viewAlert, setViewAlert] = useState<Alert | null>(null);
   const [closeAlert, setCloseAlert] = useState<Alert | null>(null);
@@ -32,25 +37,24 @@ export default function AlertsPage() {
   const [serviceLoadingId, setServiceLoadingId] = useState<string | null>(null);
   const [reorderLoadingId, setReorderLoadingId] = useState<string | null>(null);
   const createTicket = useCreateTicket();
+  const [existingTicketPrompt, setExistingTicketPrompt] = useState<{ open: boolean; siteId: string }>({ open: false, siteId: '' });
 
   useEffect(() => {
-    get<Alert[]>('/alerts').then(setAlerts);
-    get<SiteSummary[]>('/sites').then((data) => {
-      setSites(data);
-      if (data.length) setSelectedSiteId(data[0].id);
-    });
-  }, []);
+    if (!selectedSiteId && sites.length > 0) {
+      setSelectedSiteId(sites[0].id);
+    }
+  }, [sites, selectedSiteId]);
 
   const siteName = (id: string) => sites.find((s) => s.id === id)?.name || id;
   const filteredAlerts = alerts.filter((a) => !selectedSiteId || a.siteId === selectedSiteId);
-  const header = pageHeaderConfig.alerts;
+  const header = pageHeaders?.alerts;
 
   return (
     <div className="page">
       <PageHeader
-        title={header.title}
-        subtitle={header.subtitle}
-        infoTooltip={header.infoTooltip}
+        title={header?.title || 'Notifications'}
+        subtitle={header?.subtitle}
+        infoTooltip={header?.infoTooltip}
         siteSelect={{
           value: selectedSiteId,
           onChange: setSelectedSiteId,
@@ -79,7 +83,7 @@ export default function AlertsPage() {
           </button>
         </div>
         <div className="alerts-grid">
-          {[...filteredAlerts]
+          {(alertsLoading || sitesLoading) ? <div>Loading...</div> : [...filteredAlerts]
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             .filter((a) => (alertTab === 'OPEN' ? a.isOpen : !a.isOpen))
             .map((a) => (
@@ -109,7 +113,6 @@ export default function AlertsPage() {
                         onClick={async () => {
                           setReorderLoadingId(a.id);
                           try {
-                            const orders = await get<Order[]>(`/api/orders?siteId=${a.siteId}`);
                             const hasActive = orders.some(
                               (o) =>
                                 o.status !== 'DELIVERED' &&
@@ -118,7 +121,7 @@ export default function AlertsPage() {
                                 o.status !== 'CANCELLED',
                             );
                             if (hasActive) {
-                              setAlerts((prev) => prev.map((al) => (al.id === a.id ? { ...al, isOpen: false } : al)));
+                              updateAlert.mutate({ id: a.id, data: { isOpen: false, note: 'Order already exists' } });
                               return;
                             }
                             navigate(`/orders/new?siteId=${a.siteId}`);
@@ -130,25 +133,21 @@ export default function AlertsPage() {
                         {reorderLoadingId === a.id ? 'Checking…' : 'Re-order'}
                       </button>
                     )}
-                    {a.type === 'WATER_DETECTED' && (
+                    {(a.type === 'WATER_DETECTED' || a.type === 'ATG_ALARM') && (
                       <button
                         className="button ghost"
                         disabled={serviceLoadingId === a.id}
                         onClick={async () => {
                           setServiceLoadingId(a.id);
                           try {
-                            const svc = await get<ServiceCompany[]>(`/api/sites/${a.siteId}/service-companies`);
-                            const partner = svc[0];
+                            const partner = serviceCompanies[0];
                             if (!partner) {
                               navigate('/issues', { state: { siteId: a.siteId, openModal: true, partnerType: 'SERVICE' } });
                               return;
                             }
-                            const existing = await get<Ticket[]>(`/api/tickets?siteId=${a.siteId}`);
-                            const active = existing.find(
-                              (t) => t.serviceCompanyId === partner.id && t.status !== 'RESOLVED',
-                            );
+                            const active = existingTickets.find((t: Ticket) => t.serviceCompanyId === partner.id && t.status !== 'RESOLVED');
                             if (active) {
-                              navigate('/issues', { state: { siteId: a.siteId } });
+                              setExistingTicketPrompt({ open: true, siteId: a.siteId });
                               return;
                             }
                             await createTicket.mutateAsync({
@@ -186,7 +185,7 @@ export default function AlertsPage() {
               </div>
             ))}
         </div>
-        {alerts.length === 0 ? <div className="muted">No alerts.</div> : null}
+        {alerts.length === 0 && !alertsLoading ? <div className="muted">No alerts.</div> : null}
       </div>
       {viewAlert ? (
         <div className="modal-backdrop">
@@ -236,11 +235,7 @@ export default function AlertsPage() {
             <button
               className="button"
               onClick={() => {
-                setAlerts((prev) =>
-                  prev.map((al) =>
-                    al.id === closeAlert.id ? { ...al, isOpen: false, message: `${al.message} (closed: ${closeNote || 'no note'})` } : al
-                  )
-                );
+                updateAlert.mutate({ id: closeAlert.id, data: { isOpen: false, note: closeNote || 'no note' } });
                 setCloseAlert(null);
                 setCloseNote('');
               }}
@@ -250,6 +245,21 @@ export default function AlertsPage() {
           </div>
         </div>
       ) : null}
+      <ConfirmModal
+        open={existingTicketPrompt.open}
+        title="Open service ticket"
+        message="There is already an open service ticket for this site. Do you want to view it?"
+        confirmLabel="View ticket"
+        onConfirm={() => {
+          navigate('/issues', { state: { siteId: existingTicketPrompt.siteId } });
+          setExistingTicketPrompt({ open: false, siteId: '' });
+          setServiceLoadingId(null);
+        }}
+        onCancel={() => {
+          setExistingTicketPrompt({ open: false, siteId: '' });
+          setServiceLoadingId(null);
+        }}
+      />
     </div>
   );
 }

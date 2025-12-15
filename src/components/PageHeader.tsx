@@ -48,8 +48,8 @@ export default function PageHeader({ title, subtitle, infoTooltip, siteSelect, r
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {siteSelect ? (
-            <div className="form-field" style={{ minWidth: 220 }}>
-              <label>Site</label>
+            <div className="form-field" style={{ minWidth: 220, marginBottom: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <label style={{ margin: 0 }}>Site</label>
               <select value={siteSelect.value} onChange={(e) => siteSelect.onChange(e.target.value)}>
                 {siteSelect.placeholder ? <option value="">{siteSelect.placeholder}</option> : null}
                 {siteSelect.options.map((s) => (

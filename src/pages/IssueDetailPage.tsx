@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { useJobbers, useSites, useTicket, useUpdateTicket, useAddTicketComment } from '../api/hooks';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useJobbers, useSites, useTicket, useSiteDetails, useUpdateTicket, useAddTicketComment } from '../api/hooks';
 import { get } from '../api/apiClient';
-import type { ServiceCompany } from '../models/types';
+import type { ServiceCompany, Site } from '../models/types';
 
 export default function IssueDetailPage() {
   const { ticketId } = useParams();
+  const navigate = useNavigate();
   const { data: ticket } = useTicket(ticketId);
   const { data: sites = [] } = useSites();
+  const siteDetailsQuery = useSiteDetails(ticket?.siteId || '');
+  const siteDetails = siteDetailsQuery.data as Site | undefined;
   const { data: jobbers = [] } = useJobbers();
   const updateTicket = useUpdateTicket();
   const addComment = useAddTicketComment();
@@ -15,23 +18,33 @@ export default function IssueDetailPage() {
   const [serviceCompanies, setServiceCompanies] = useState<ServiceCompany[]>([]);
 
   const siteObj = useMemo(() => sites.find((s) => s.id === ticket?.siteId), [sites, ticket]);
-  const siteName = siteObj?.name || ticket?.siteId || 'Site';
-  const partnerLabel = useMemo(() => {
-    if (!ticket) return 'Partner';
-    const servicePartner = ticket.serviceCompanyId ? serviceCompanies.find((s) => s.id === ticket.serviceCompanyId) : undefined;
-    const jobberName = jobbers.find((j) => j.id === ticket.jobberId)?.name;
-    if (jobberName) return `Jobber • ${jobberName}`;
-    if (servicePartner) return `Service • ${servicePartner.name}`;
-    if (ticket.serviceCompanyId) return `Service • ${ticket.serviceCompanyId}`;
-    return 'Partner';
-  }, [jobbers, serviceCompanies, ticket]);
-
-  const statusBadge = (status: string) => {
-    const base = { fontSize: '0.9rem', padding: '0.15rem 0.5rem' };
-    if (status === 'OPEN') return <span className="badge badge-red" style={base}>Open</span>;
-    if (status === 'IN_PROGRESS') return <span className="badge badge-yellow" style={base}>In progress</span>;
-    return <span className="badge badge-green" style={base}>Resolved</span>;
-  };
+   const siteName = siteObj?.name || ticket?.siteId || 'Site';
+  const alertDescription = useMemo(() => {
+    if (!ticket?.description) return 'Alert details unavailable';
+    return ticket.description.replace(/Service needed for alert:\s*/gi, '').trim();
+  }, [ticket]);
+  const issueTank = useMemo(() => {
+    if (!alertDescription || !siteDetails?.tanks?.length) return undefined;
+    const normalized = alertDescription.toLowerCase();
+    const tanks = siteDetails.tanks;
+    const byName = tanks.find((tank) => normalized.includes(tank.name.toLowerCase()));
+    if (byName) return byName;
+    const gradeLookup: Record<string, string> = {
+      diesel: 'DIESEL',
+      reg: 'REGULAR',
+      regular: 'REGULAR',
+      super: 'PREMIUM',
+      premium: 'PREMIUM',
+      midgrade: 'VIRTUAL_MIDGRADE',
+      mid: 'VIRTUAL_MIDGRADE',
+    };
+    const gradeMatch = Object.entries(gradeLookup).find(([keyword]) => normalized.includes(keyword));
+    if (gradeMatch) {
+      const gradeTank = tanks.find((tank) => tank.productType === gradeMatch[1]);
+      if (gradeTank) return gradeTank;
+    }
+    return undefined;
+  }, [alertDescription, siteDetails]);
 
   const isResolved = ticket?.status === 'RESOLVED';
 
@@ -57,21 +70,73 @@ export default function IssueDetailPage() {
 
   return (
     <div className="page">
-      <div className="card">
-        <div className="card-header" style={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+      <div className="card" style={{ marginBottom: '0.75rem' }}>
+        <div className="card-header" style={{ gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>Issue {ticket.id}</div>
-            <div className="muted">
-              {siteName} • {partnerLabel} • {ticket.type.replace('_', ' ')}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                fontWeight: 800,
+                fontSize: '1.2rem',
+              }}
+            >
+              Issue detail
+              <span
+                className="muted"
+                title="Tickets > issue ID includes service context, comments, and next steps."
+                style={{ cursor: 'help', display: 'inline-flex', alignItems: 'center' }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M12 16v-4" strokeLinecap="round"></path>
+                  <path d="M12 8h.01" strokeLinecap="round"></path>
+                </svg>
+              </span>
             </div>
+            <div className="muted">Tickets &gt; {ticket.id}</div>
           </div>
-          {statusBadge(ticket.status)}
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="button ghost" type="button" onClick={() => navigate('/app/issues')}>
+              Back to issues
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: '0.95rem' }}>Reference {ticket.id} for service context, comments, and next steps.</div>
+      </div>
+      <div className="card">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontWeight: 800,
+            fontSize: '1.2rem',
+            marginBottom: '0.75rem',
+          }}
+        >
+          <span>{alertDescription}</span>
+          <span className="badge badge-red" style={{ fontSize: '0.9rem', padding: '0.15rem 0.5rem' }}>
+            {ticket.status === 'OPEN'
+              ? 'Open'
+              : ticket.status === 'IN_PROGRESS'
+              ? 'In progress'
+              : 'Resolved'}
+          </span>
+        </div>
+        <div className="muted" style={{ fontSize: '0.9rem' }}>
+          Created {new Date(ticket.createdAt).toLocaleString()}
         </div>
         <div style={{ padding: '0.75rem', display: 'grid', gap: '0.5rem' }}>
-          <div>
-            <div className="label">Description</div>
-            <div>{ticket.description}</div>
-          </div>
           <div className="grid" style={{ gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
             <div>
               <div className="label">Store</div>
@@ -101,11 +166,18 @@ export default function IssueDetailPage() {
             </div>
             <div>
               <div className="label">Tank</div>
-              <div>Not provided</div>
+              {issueTank ? (
+                <>
+                  <div>{issueTank.name}</div>
+                  <div className="muted" style={{ fontSize: '0.9rem' }}>
+                    {issueTank.productType} · {issueTank.currentVolumeGallons.toLocaleString()} / {issueTank.capacityGallons.toLocaleString()}{' '}
+                    gal
+                  </div>
+                </>
+              ) : (
+                <div>Not provided</div>
+              )}
             </div>
-          </div>
-          <div className="muted" style={{ fontSize: '0.9rem' }}>
-            Created {new Date(ticket.createdAt).toLocaleString()}
           </div>
           <div className="form-field" style={{ maxWidth: 220 }}>
             <label>Status</label>
@@ -137,41 +209,40 @@ export default function IssueDetailPage() {
                 </div>
               ))}
             </div>
-            {isResolved ? (
+          {!isResolved ? (
+            <>
+              <div className="form-field" style={{ marginTop: '0.5rem' }}>
+                <label>Add comment</label>
+                <textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} rows={3} />
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', alignItems: 'center' }}>
-                <div className="muted">Issue is resolved. Comments and status are locked.</div>
                 <Link className="button ghost" to="/issues">
                   Back to issues
                 </Link>
+                <button
+                  className="button"
+                  onClick={() => {
+                    if (!commentText.trim() || !ticket.id) return;
+                    addComment.mutate(
+                      { id: ticket.id, text: commentText.trim() },
+                      {
+                        onSuccess: () => setCommentText(''),
+                      },
+                    );
+                  }}
+                  disabled={addComment.isPending || !commentText.trim()}
+                >
+                  {addComment.isPending ? 'Posting…' : 'Post comment'}
+                </button>
               </div>
-            ) : (
-              <>
-                <div className="form-field" style={{ marginTop: '0.5rem' }}>
-                  <label>Add comment</label>
-                  <textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} rows={3} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', alignItems: 'center' }}>
-                  <Link className="button ghost" to="/issues">
-                    Back to issues
-                  </Link>
-                  <button
-                    className="button"
-                    onClick={() => {
-                      if (!commentText.trim() || !ticket.id) return;
-                      addComment.mutate(
-                        { id: ticket.id, text: commentText.trim() },
-                        {
-                          onSuccess: () => setCommentText(''),
-                        },
-                      );
-                    }}
-                    disabled={addComment.isPending || !commentText.trim()}
-                  >
-                    {addComment.isPending ? 'Posting…' : 'Post comment'}
-                  </button>
-                </div>
-              </>
-            )}
+            </>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Link className="button ghost" to="/issues">
+                Back to issues
+              </Link>
+            </div>
+          )}
           </div>
         </div>
       </div>

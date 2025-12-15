@@ -97,6 +97,7 @@ export interface Order {
   ruleTriggered?: boolean;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
   orderNumber?: string;
   jobberPoNumber?: string;
   lines?: { tankId: string; quantityGallonsRequested: number; quantityGallonsDelivered?: number }[];

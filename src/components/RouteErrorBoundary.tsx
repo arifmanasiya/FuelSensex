@@ -35,7 +35,7 @@ export default function RouteErrorBoundary() {
           <button className="button ghost" onClick={() => window.location.reload()}>
             Retry
           </button>
-          <Link className="button" to="/FuelSensex/">
+          <Link className="button" to={import.meta.env.BASE_URL || '/'}>
             Go to dashboard
           </Link>
         </div>

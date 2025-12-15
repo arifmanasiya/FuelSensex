@@ -135,7 +135,6 @@ export default function DashboardPage() {
     return recentDays.reduce((sum, entry) => sum + entry.gallons, 0);
   }, [daySeries]);
   const heroKpis = useMemo<HeroKpi[]>(() => {
-    const point = displayPeriods[boundedIndex];
     const siteLowest =
       perSiteSnapshot.length > 0 ? Math.min(...perSiteSnapshot.map((snapshot) => snapshot.lowestPct)) : undefined;
     const runoutEntries = liveStatus?.runout ?? [];

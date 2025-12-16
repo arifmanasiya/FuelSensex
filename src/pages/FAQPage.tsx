@@ -8,15 +8,15 @@ export default function FAQPage() {
   return (
     <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '1rem' }}>
       <div style={{ display: 'grid', gap: '0.75rem', placeItems: 'center', textAlign: 'center', marginBottom: '1rem' }}>
-        <img src={logo} alt="FuelSensex" style={{ height: 48 }} />
-        <div style={{ fontWeight: 800, fontSize: '1.4rem' }}>FuelSensex FAQ</div>
+        <img src={logo} alt="FuelTrics" style={{ height: 48 }} />
+        <div style={{ fontWeight: 800, fontSize: '1.4rem' }}>FuelTrics FAQ</div>
         <div className="muted" style={{ maxWidth: '78ch' }}>Clear answers for owners, jobbers, and back-office teams.</div>
       </div>
 
       <section className="card" id="faq" style={{ margin: '0 auto', maxWidth: '980px' }}>
         <div className="card-header" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
           <div>
-            <div style={{ fontWeight: 800 }}>FuelSensex FAQ</div>
+            <div style={{ fontWeight: 800 }}>FuelTrics FAQ</div>
             <div className="muted">Clear answers for owners, jobbers, and back-office teams.</div>
           </div>
 
@@ -34,9 +34,9 @@ export default function FAQPage() {
 
           <div className="list-grid" style={{ display: 'grid', gap: '0.65rem' }}>
             <details className="list-card" open>
-              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>What problems does FuelSensex solve?</summary>
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>What problems does FuelTrics solve?</summary>
               <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
-                FuelSensex provides a single operational view across ATG readings, deliveries, orders, and POs—so teams can reconcile faster,
+                FuelTrics provides a single operational view across ATG readings, deliveries, orders, and POs—so teams can reconcile faster,
                 identify exceptions earlier, and maintain a defensible operational history.
               </div>
             </details>
@@ -44,14 +44,14 @@ export default function FAQPage() {
             <details className="list-card">
               <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>How does unsolicited delivery handling work?</summary>
               <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
-                FuelSensex flags unplanned drops, provides a guided flow to link the delivery to an order and PO, and preserves the audit trail—so variance can be addressed with clarity and confidence.
+                FuelTrics flags unplanned drops, provides a guided flow to link the delivery to an order and PO, and preserves the audit trail—so variance can be addressed with clarity and confidence.
               </div>
             </details>
 
             <details className="list-card">
               <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>How are deliveries matched to orders?</summary>
               <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
-                FuelSensex uses ATG start/end volumes and BOL details to suggest matches. Operators can confirm, adjust, or link manually. Every change is recorded with timestamps.
+                FuelTrics uses ATG start/end volumes and BOL details to suggest matches. Operators can confirm, adjust, or link manually. Every change is recorded with timestamps.
               </div>
             </details>
 
@@ -65,14 +65,14 @@ export default function FAQPage() {
             <details className="list-card">
               <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>Do I need special hardware?</summary>
               <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
-                FuelSensex works with your existing ATG feed via an ATG bridge connection. No new console is required. Data is transmitted securely.
+                FuelTrics works with your existing ATG feed via an ATG bridge connection. No new console is required. Data is transmitted securely.
               </div>
             </details>
 
             <details className="list-card">
-              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>Is FuelSensex multi-site friendly?</summary>
+              <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>Is FuelTrics multi-site friendly?</summary>
               <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
-                Yes. FuelSensex supports multi-site views, per-site drilldowns, and role-based access for different teams and responsibilities.
+                Yes. FuelTrics supports multi-site views, per-site drilldowns, and role-based access for different teams and responsibilities.
               </div>
             </details>
 
@@ -86,7 +86,7 @@ export default function FAQPage() {
             <details className="list-card">
               <summary style={{ cursor: 'pointer', fontWeight: 800, listStyle: 'none' }}>How do I get help?</summary>
               <div className="muted" style={{ marginTop: '0.5rem', maxWidth: '92ch' }}>
-                Use the Contact page for support or to request a walkthrough. FuelSensex is built for operators, and support is intended to be direct and practical.
+                Use the Contact page for support or to request a walkthrough. FuelTrics is built for operators, and support is intended to be direct and practical.
               </div>
             </details>
           </div>

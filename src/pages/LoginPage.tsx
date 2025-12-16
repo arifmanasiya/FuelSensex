@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div style={{ fontWeight: 800, fontSize: '1.5rem', marginBottom: '0.5rem' }}>FuelSensex Login</div>
+        <div style={{ fontWeight: 800, fontSize: '1.5rem', marginBottom: '0.5rem' }}>FuelTrics Login</div>
         <div className="muted" style={{ marginBottom: '1.25rem' }}>
           Mock experience — any credentials will work.
         </div>

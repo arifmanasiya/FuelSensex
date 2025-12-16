@@ -8,8 +8,8 @@ export default function TopNav({ onMenuToggle }: Props) {
   return (
     <header className="topnav" style={{ justifyContent: 'flex-start' }}>
       <div className="title" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-        <img src={logo} alt="FuelSensex" style={{ height: 32, width: 'auto' }} />
-        <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>FuelSensex</span>
+        <img src={logo} alt="FuelTrics" style={{ height: 32, width: 'auto' }} />
+        <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>FuelTrics</span>
       </div>
       <div style={{ marginLeft: 'auto' }}>
         <button

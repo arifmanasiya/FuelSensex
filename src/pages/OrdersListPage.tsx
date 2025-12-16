@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useJobbers, useOrderAction, useOrders, useSiteTanks, useSites, usePageHeaders } from '../api/hooks';
 import PageHeader from '../components/PageHeader';
 import ConfirmModal from '../components/ConfirmModal';
@@ -137,7 +137,7 @@ export default function OrdersListPage() {
                         PO <span className="mono">{o.jobberPoNumber}</span>
                       </div>
                     ) : (
-                      <div className="muted small">PO —</div>
+                      <div className="muted small">PO �</div>
                     )}
                   </div>
                   <div className="ol-cell" role="cell" data-label="Lines">

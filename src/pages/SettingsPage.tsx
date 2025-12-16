@@ -138,22 +138,18 @@ export default function SettingsPage() {
 
   const setSectionAndHash = (next: SettingsSection) => {
     setSection(next);
+    window.location.hash = `#${next}`;
   };
 
   useEffect(() => {
     const nextSection = parseSection(location.hash);
     if (nextSection && nextSection !== section) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSection(nextSection);
     }
-  }, [location.hash, section]);
+  }, [location.hash]);
 
   useEffect(() => {
-    window.location.hash = `#${section}`;
-  }, [section]);
-
-  useEffect(() => {
-    document.title = `FuelSensex Settings - ${sectionLabel}`;
+    document.title = `FuelTrics Settings - ${sectionLabel}`;
   }, [sectionLabel]);
 
   useEffect(() => {

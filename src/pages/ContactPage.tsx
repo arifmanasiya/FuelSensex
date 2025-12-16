@@ -1,4 +1,4 @@
-ï»¿
+
 export default function ContactPage() {
   const base = import.meta.env.BASE_URL;
   const logo = `${base}logo_new.png`;
@@ -11,9 +11,9 @@ export default function ContactPage() {
       <div className="public-hero">
         <div className="public-hero__top">
           <div className="public-hero__brand">
-            <img src={logo} alt="FuelSensex" />
+            <img src={logo} alt="FuelTrics" />
             <div>
-              <div style={{ fontWeight: 800, fontSize: '1.35rem', color: '#002f4b' }}>Contact FuelSensex</div>
+              <div style={{ fontWeight: 800, fontSize: '1.35rem', color: '#002f4b' }}>Contact FuelTrics</div>
               <div className="muted">We are here to help you stop fuel loss and stay stocked.</div>
             </div>
           </div>
@@ -31,14 +31,14 @@ export default function ContactPage() {
             <div className="card-header">
               <div style={{ fontWeight: 700 }}>Technology</div>
             </div>
-            <div className="muted">Aarif K Manasiya Â· artmanasiya@yahoo.com Â· 512-412-5580</div>
+            <div className="muted">Aarif K Manasiya · artmanasiya@yahoo.com · 512-412-5580</div>
           </div>
 
           <div className="card" style={{ margin: 0 }}>
             <div className="card-header">
               <div style={{ fontWeight: 700 }}>Product</div>
             </div>
-            <div className="muted">Arshad Momin Â· 713-518-5540</div>
+            <div className="muted">Arshad Momin · 713-518-5540</div>
           </div>
 
           <div className="card" style={{ margin: 0 }}>

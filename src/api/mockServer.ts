@@ -119,7 +119,7 @@ function getInitialMockData(): MockData {
 
   const userProfile: UserProfile = {
     id: 'user-1',
-    companyName: 'FuelSensex Pilot Stores',
+    companyName: 'FuelTrics Pilot Stores',
     contactName: 'Station Owner',
     email: 'owner@example.com',
     phone: '+1 (555) 222-7777',

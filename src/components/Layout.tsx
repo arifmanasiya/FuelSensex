@@ -30,7 +30,7 @@ export default function Layout({ children }: Props) {
         </main>
           <footer className="footer">
             <div>
-              <div style={{ fontWeight: 700 }}>FuelSensex</div>
+              <div style={{ fontWeight: 700 }}>FuelTrics</div>
               <div className="muted">A product of LabUDIS ©</div>
             </div>
           </footer>

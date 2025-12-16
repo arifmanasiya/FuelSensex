@@ -8,11 +8,11 @@ import logo from "../assets/logo_new.png";
   const contactHref = `${base}contact`;
 
   return (
-    <div className="fs-home" aria-label="FuelSensex Home">
+    <div className="fs-home" aria-label="FuelTrics Home">
       <header className="fs-topnav">
         <div className="fs-topnav__brand" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-          <img src={logo} alt="FuelSensex" style={{ height: 32, width: 'auto' }} />
-          <span style={{ fontWeight: 800 }}>FuelSensex</span>
+          <img src={logo} alt="FuelTrics" style={{ height: 32, width: 'auto' }} />
+          <span style={{ fontWeight: 800 }}>FuelTrics</span>
         </div>
         <a className="fs-topnav__login" href={loginHref}>Login</a>
       </header>
@@ -31,7 +31,7 @@ import logo from "../assets/logo_new.png";
               <p className="fs-eyebrow">Fuel Operations • ATG Intelligence • Delivery Reconciliation</p>
               <h1 className="fs-h1">From ATG data to operational clarity.</h1>
               <p className="fs-lead">
-                FuelSensex unifies live tank readings, deliveries, orders, and POs into a single operational cockpit—so teams can reconcile faster,
+                FuelTrics unifies live tank readings, deliveries, orders, and POs into a single operational cockpit—so teams can reconcile faster,
                 surface root causes, and maintain defensible records while keeping supply and pricing decisions fully aligned.
               </p>
 
@@ -159,7 +159,7 @@ import logo from "../assets/logo_new.png";
         <section className="fs-section fs-section--alt" id="approach">
           <div className="fs-container">
             <div className="fs-sectionHead">
-              <h2 className="fs-h2">The FuelSensex way</h2>
+              <h2 className="fs-h2">The FuelTrics way</h2>
               <p className="fs-sub">One operational view. Clear actions. Defensible outcomes.</p>
             </div>
 
@@ -379,7 +379,7 @@ import logo from "../assets/logo_new.png";
           <a href={faqHref}>FAQ</a>
           <a href={contactHref}>Contact Us</a>
         </div>
-        <div className="muted small">FuelSensex • Built for real operations</div>
+        <div className="muted small">FuelTrics • Built for real operations</div>
       </footer>
     </div>
   );

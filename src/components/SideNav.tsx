@@ -162,8 +162,8 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
     <aside className={sidebarClass}>
       <div className="sidebar-header">
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-          <img src={logo} alt="FuelSensex" style={{ height: 32, width: 'auto' }} />
-          <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>FuelSensex</span>
+          <img src={logo} alt="FuelTrics" style={{ height: 32, width: 'auto' }} />
+          <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>FuelTrics</span>
         </div>
       </div>
 
@@ -174,7 +174,7 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
           aria-expanded={productOpen}
           onClick={() => setProductOpen((prev) => !prev)}
         >
-          <span>FuelSensex Menu</span>
+          <span>FuelTrics Menu</span>
           <span>{productOpen ? '▾' : '▸'}</span>
         </button>
         <nav className={`nav-links ${productOpen ? 'open' : 'closed'}`}>
@@ -252,7 +252,7 @@ export default function SideNav({ isOpen, onLinkClick }: { isOpen?: boolean; onL
       <ConfirmModal
         open={confirmLogout}
         title="Confirm logout"
-        message="You are about to sign out of FuelSensex."
+        message="You are about to sign out of FuelTrics."
         confirmLabel="Logout"
         cancelLabel="Cancel"
         onConfirm={() => {

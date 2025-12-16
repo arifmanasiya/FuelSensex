@@ -212,11 +212,11 @@ export default function DashboardPage() {
       <div className="hero hero-grid">
         <div>
           <div className="pill" style={{ background: 'rgba(255,255,255,0.08)', color: '#dbeafe' }}>
-            FuelSensex Watchtower
+            FuelTrics Watchtower
           </div>
-          <h1>FuelSensex orchestrates live tank, delivery, and demand intelligence for every store.</h1>
+          <h1>FuelTrics orchestrates live tank, delivery, and demand intelligence for every store.</h1>
           <div style={{ opacity: 0.9, marginBottom: '1rem' }}>
-            FuelSensex highlights {totals.openIssues} open{' '}
+            FuelTrics highlights {totals.openIssues} open{' '}
             {totals.openIssues === 1 ? 'issue' : 'issues'} for {selectedSiteLabel} so you can act before the
             next fill.
           </div>
